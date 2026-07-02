@@ -1,0 +1,211 @@
+/* ================= ROOT DESIGN SYSTEM ================= */
+:root {
+  --bg: #f5f5f5;
+  --card: #ffffff;
+  --text: #333;
+  --primary: #111;
+  --accent: #28a745;
+  --accent-hover: #1f7a33;
+  --blue: #007bff;
+}
+
+/* ================= GLOBAL ================= */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* ================= NAVBAR ================= */
+.navbar {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 15px 20px;
+  background: var(--primary);
+  color: white;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+/* ================= HERO ================= */
+.hero {
+  text-align: center;
+  padding: 40px 20px;
+  background: linear-gradient(to right, #222, #444);
+  color: white;
+}
+
+.hero input {
+  width: 90%;
+  max-width: 500px;
+  padding: 12px;
+  margin-top: 12px;
+  border-radius: 8px;
+  border: none;
+  outline: none;
+  font-size: 16px;
+}
+
+/* ================= STATUS ================= */
+.status {
+  text-align: center;
+  padding: 10px;
+  font-size: 14px;
+  color: #666;
+}
+
+/* ================= GRID ================= */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 15px;
+  padding: 20px;
+}
+
+/* ================= CARD ================= */
+.card {
+  background: var(--card);
+  padding: 15px;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+  transition: 0.3s ease;
+}
+
+.card:hover {
+  transform: translateY(-4px);
+}
+
+.card img {
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+/* ================= BUTTON ================= */
+.card button {
+  padding: 12px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  width: 100%;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 15px;
+  min-height: 44px;
+  transition: 0.3s ease;
+}
+
+.card button:hover {
+  background: var(--accent-hover);
+}
+
+/* ================= FOCUS ACCESSIBILITY ================= */
+button:focus,
+input:focus {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+/* ================= BOTTOM NAV ================= */
+.bottom-nav {
+  position: fixed;
+  bottom: 15px;
+  left: 50%;
+  transform: translateX(-50%);
+
+  background: var(--primary);
+  padding: 10px 12px;
+  border-radius: 50px;
+
+  display: flex;
+  gap: 10px;
+
+  box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+  z-index: 999;
+}
+
+.bottom-nav a {
+  color: white;
+  text-decoration: none;
+  font-weight: bold;
+  padding: 8px 14px;
+  border-radius: 20px;
+  font-size: 14px;
+  transition: 0.3s ease;
+}
+
+.bottom-nav a:hover {
+  background: var(--blue);
+}
+
+/* ================= MOBILE ================= */
+@media (max-width: 600px) {
+  .hero {
+    padding: 30px 15px;
+  }
+
+  .bottom-nav {
+    gap: 6px;
+    padding: 8px 10px;
+  }
+
+  .bottom-nav a {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+}
+
+/* ================= ADMIN 3-DOT MENU (FIXED) ================= */
+.admin-menu {
+  position: fixed;
+  top: 15px;
+  left: 15px;
+  z-index: 1000;
+}
+
+.admin-dots {
+  font-size: 26px;
+  color: white;
+  cursor: pointer;
+  user-select: none;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(0,0,0,0.35);
+  display: inline-block;
+}
+
+.admin-dropdown {
+  display: none;
+  position: absolute;
+  top: 40px;
+  left: 0;
+  background: white;
+  min-width: 150px;
+  border-radius: 8px;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+  overflow: hidden;
+}
+
+.admin-menu.active .admin-dropdown {
+  display: block;
+}
+
+.admin-dropdown a {
+  display: block;
+  padding: 10px;
+  text-decoration: none;
+  color: #333;
+  font-weight: bold;
+}
+
+.admin-dropdown a:hover {
+  background: #f2f2f2;
+}

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vendor Login</title>
+
+<script src="https://sdk.minepi.com/pi-sdk.js"></script>
+
+<link rel="stylesheet" href="vendor-login.css">
+</head>
+
+<body>
+
+<div class="login-container">
+
+  <h2>Vendor Login</h2>
+
+  <input id="email" placeholder="Email">
+  <input id="password" type="password" placeholder="Password">
+
+  <button id="loginBtn" onclick="loginVendor()">Login</button>
+
+  <button id="piLoginBtn" onclick="loginWithPi()">
+    Login with Pi Network
+  </button>
+
+  <p id="msg"></p>
+
+</div>
+
+<script>
+const API = window.location.origin + "/api";
+
+/* =========================
+   EMAIL LOGIN (FIXED ENDPOINT)
+========================= */
+async function loginVendor() {
+  const btn = document.getElementById("loginBtn");
+  const msg = document.getElementById("msg");
+
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value.trim();
+
+  if (!email || !password) {
+    msg.innerText = "Please fill all fields";
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerText = "Logging in...";
+
+  try {
+    const res = await fetch(`${API}/auth/vendor/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password })
+    });
+
+    const data = await res.json();
+
+    if (res.ok && data.token) {
+      localStorage.setItem("vendorToken", data.token);
+      window.location.href = "vendor-dashboard.html";
+    } else {
+      msg.innerText = data.message || "Login failed";
+    }
+
+  } catch (err) {
+    console.error(err);
+    msg.innerText = "Network error";
+  }
+
+  btn.disabled = false;
+  btn.innerText = "Login";
+}
+
+/* =========================
+   PI LOGIN (HARDENED)
+========================= */
+async function loginWithPi() {
+  const msg = document.getElementById("msg");
+  const btn = document.getElementById("piLoginBtn");
+
+  msg.innerText = "Connecting to Pi...";
+
+  btn.disabled = true;
+
+  try {
+    if (!window.Pi) {
+      msg.innerText = "Pi SDK not loaded";
+      btn.disabled = false;
+      return;
+    }
+
+    Pi.init({ version: "2.0" });
+
+    Pi.authenticate(["username", "payments"], async function(auth) {
+
+      try {
+        const res = await fetch(`${API}/auth/pi-login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            accessToken: auth.accessToken,
+            uid: auth.user.uid,
+            username: auth.user.username
+          })
+        });
+
+        const data = await res.json();
+
+        if (res.ok && data.token) {
+          localStorage.setItem("vendorToken", data.token);
+          window.location.href = "vendor-dashboard.html";
+        } else {
+          msg.innerText = data.message || "Pi login failed";
+        }
+
+      } catch (err) {
+        console.error(err);
+        msg.innerText = "Server error during Pi login";
+      }
+
+      btn.disabled = false;
+    });
+
+  } catch (err) {
+    console.error(err);
+    msg.innerText = "Pi authentication error";
+    btn.disabled = false;
+  }
+}
+</script>
+
+</body>
+</html>

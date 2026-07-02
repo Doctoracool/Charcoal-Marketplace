@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Checkout - Charcoal Marketplace</title>
+
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
+<script src="https://sdk.minepi.com/pi-sdk.js"></script>
+</head>
+
+<body>
+
+<!-- ================= HEADER ================= -->
+<header class="navbar">
+  <h1>🧾 Checkout</h1>
+  <a href="product.html" style="color:white;text-decoration:none;">
+    <i class="fa fa-arrow-left"></i> Back
+  </a>
+</header>
+
+<!-- ================= CHECKOUT CONTAINER ================= -->
+<section class="hero">
+
+  <h2>Confirm Your Order</h2>
+  <p>Secure payment via Pi Network</p>
+
+  <div class="card" id="productBox">
+    <p>Loading product...</p>
+  </div>
+
+  <h2>Total: <span id="totalAmount">0 Pi</span></h2>
+
+  <button id="payBtn" onclick="makePayment()">
+    Pay with Pi
+  </button>
+
+  <p id="msg"></p>
+
+</section>
+
+<!-- ================= BOTTOM NAV ================= -->
+<div class="bottom-nav">
+
+  <a href="index.html">
+    <i class="fa fa-house"></i>
+    <span>Home</span>
+  </a>
+
+  <a href="product.html">
+    <i class="fa fa-box"></i>
+    <span>Products</span>
+  </a>
+
+  <a href="vendor-login.html">
+    <i class="fa fa-store"></i>
+    <span>Vendor</span>
+  </a>
+
+  <a href="admin-login.html">
+    <i class="fa fa-shield-halved"></i>
+    <span>Admin</span>
+  </a>
+
+</div>
+
+<script>
+const API = window.location.origin + "/api";
+
+const params = new URLSearchParams(window.location.search);
+const productId = params.get("id");
+
+let productData = null;
+
+/* =========================
+   LOAD PRODUCT
+========================= */
+async function loadProduct() {
+  try {
+    const res = await fetch(`${API}/products`);
+    const data = await res.json();
+
+    productData = data.find(p => p.id == productId);
+
+    const box = document.getElementById("productBox");
+
+    if (!productData) {
+      box.innerHTML = "<p>Product not found</p>";
+      return;
+    }
+
+    document.getElementById("totalAmount").innerText = productData.price_pi + " Pi";
+
+    box.innerHTML = `
+      <img src="${window.location.origin}${productData.image}" style="width:100%;border-radius:10px;">
+      <h3>${productData.name}</h3>
+      <p>${productData.location}</p>
+      <h2>${productData.price_pi} Pi</h2>
+    `;
+
+  } catch (err) {
+    console.error(err);
+    document.getElementById("productBox").innerHTML = "<p>Error loading product</p>";
+  }
+}
+
+/* =========================
+   PI PAYMENT FLOW (CLEAN)
+========================= */
+function makePayment() {
+
+  const btn = document.getElementById("payBtn");
+  const msg = document.getElementById("msg");
+
+  if (!productData) {
+    msg.innerText = "Product not loaded";
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerText = "Processing...";
+
+  Pi.init({ version: "2.0" });
+
+  Pi.authenticate(["payments"], function(auth) {
+
+    Pi.createPayment({
+      amount: productData.price_pi,
+      memo: `Purchase: ${productData.name}`,
+      metadata: {
+        productId: productData.id
+      }
+    }, {
+
+      onReadyForServerApproval: async function(paymentId) {
+        await fetch(`${API}/payments/approve`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paymentId })
+        });
+      },
+
+      onReadyForServerCompletion: async function(paymentId, txid) {
+        await fetch(`${API}/payments/complete`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paymentId, txid })
+        });
+
+        msg.innerText = "Payment successful ✔";
+        btn.innerText = "Paid ✔";
+      }
+
+    });
+
+  }, function(error) {
+    console.error(error);
+    msg.innerText = "Payment failed";
+    btn.disabled = false;
+    btn.innerText = "Try Again";
+  });
+}
+
+/* =========================
+   INIT
+========================= */
+loadProduct();
+
+</script>
+
+</body>
+</html>
