@@ -1,22 +1,23 @@
+console.log("SERVER STARTING...");
+
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
 require("dotenv").config();
 
-const app = express();
-
 /* =========================
-   PORT
+   APP INIT
 ========================= */
+const app = express();
 const PORT = process.env.PORT || 5000;
 
 /* =========================
-   TRUST PROXY (Render / Cloud support)
+   TRUST PROXY (Render FIX)
 ========================= */
 app.set("trust proxy", 1);
 
 /* =========================
-   CORS (PI BROWSER SAFE MODE)
+   CORS (PI SAFE + PRODUCTION SAFE)
 ========================= */
 const allowedOrigins = [
   "http://localhost:3000",
@@ -25,15 +26,15 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: function (origin, callback) {
-    // allow mobile / Pi Browser requests (no origin)
+    // allow mobile apps / Pi browser
     if (!origin) return callback(null, true);
 
-    // allow local dev
+    // allow local dev only strictly listed
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
 
-    // allow all for Pi Browser compatibility (important)
+    // production fallback (safe for Pi Browser + hosted frontend)
     return callback(null, true);
   },
   methods: ["GET", "POST", "PUT", "DELETE"],
@@ -41,7 +42,7 @@ app.use(cors({
 }));
 
 /* =========================
-   BODY PARSING
+   BODY PARSER
 ========================= */
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
@@ -52,22 +53,31 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.get("/", (req, res) => {
   res.json({
     status: "OK",
-    message: "Charcoal Marketplace API running successfully 🚀"
+    message: "Charcoal Marketplace API running 🚀"
   });
 });
 
 /* =========================
-   ROUTES
+   ROUTES SAFETY WRAPPER
 ========================= */
-app.use("/api/auth", require("./routes/auth.routes"));
-app.use("/api/products", require("./routes/product.routes"));
-app.use("/api/orders", require("./routes/order.routes"));
-app.use("/api/payments", require("./routes/payment.routes"));
-app.use("/api/admin", require("./routes/admin.routes"));
-app.use("/api/notifications", require("./routes/notification.routes"));
+function safeRoute(routePath, routeFile) {
+  try {
+    app.use(routePath, require(routeFile));
+    console.log(`✅ Loaded ${routePath}`);
+  } catch (err) {
+    console.error(`❌ Failed loading ${routePath}:`, err.message);
+  }
+}
+
+safeRoute("/api/auth", "./routes/auth.routes");
+safeRoute("/api/products", "./routes/product.routes");
+safeRoute("/api/orders", "./routes/order.routes");
+safeRoute("/api/payments", "./routes/payment.routes");
+safeRoute("/api/admin", "./routes/admin.routes");
+safeRoute("/api/notifications", "./routes/notification.routes");
 
 /* =========================
-   STATIC FILES (UPLOADS)
+   STATIC FILES
 ========================= */
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
@@ -85,7 +95,7 @@ app.use((req, res) => {
    GLOBAL ERROR HANDLER
 ========================= */
 app.use((err, req, res, next) => {
-  console.error("🔥 Server Error:", err);
+  console.error("🔥 SERVER ERROR:", err);
 
   res.status(500).json({
     success: false,
@@ -94,9 +104,9 @@ app.use((err, req, res, next) => {
 });
 
 /* =========================
-   START SERVER
+   START SERVER (SAFE)
 ========================= */
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📡 API Ready at http://localhost:${PORT}`);
+  console.log(`📡 API: http://localhost:${PORT}`);
 });

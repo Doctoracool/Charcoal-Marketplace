@@ -2,13 +2,25 @@ const mysql = require("mysql2");
 require("dotenv").config();
 
 /* =========================
+   ENV VALIDATION (CRITICAL FIX)
+========================= */
+const requiredEnv = ["DB_HOST", "DB_USER", "DB_PASSWORD", "DB_NAME"];
+
+requiredEnv.forEach((key) => {
+  if (!process.env[key]) {
+    console.error(`❌ Missing environment variable: ${key}`);
+    process.exit(1); // prevents silent crash later
+  }
+});
+
+/* =========================
    DATABASE POOL
 ========================= */
 const pool = mysql.createPool({
-  host: process.env.DB_HOST || "localhost",
-  user: process.env.DB_USER || "root",
-  password: process.env.DB_PASSWORD || "",
-  database: process.env.DB_NAME || "charcoal_marketplace",
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
 
   waitForConnections: true,
   connectionLimit: 10,
@@ -16,24 +28,22 @@ const pool = mysql.createPool({
 });
 
 /* =========================
-   PROMISE VERSION (CORRECT)
+   PROMISE VERSION
 ========================= */
 const db = pool.promise();
 
 /* =========================
-   TEST CONNECTION
+   SAFE CONNECTION TEST
 ========================= */
 pool.getConnection((err, connection) => {
   if (err) {
-    console.error("❌ Database connection failed:", err.message);
-    return;
+    console.error("❌ Database connection failed:");
+    console.error(err.message);
+    process.exit(1); // IMPORTANT: stop app cleanly
   }
 
   console.log("✅ MySQL connected successfully");
   connection.release();
 });
 
-module.exports = {
-  db,
-  pool
-};
+module.exports = db;

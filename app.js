@@ -1,7 +1,7 @@
 /* =========================
    CONFIG 
 ========================= */
-const API = "https://charcoal-server.onrender.com/api";
+const API = "https://charcoal-marketplace.onrender.com/api";
 let allProducts = [];
 
 /* =========================

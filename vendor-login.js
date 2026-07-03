@@ -51,7 +51,7 @@ async function loginVendor() {
     msg.style.color = "green";
 
     setTimeout(() => {
-      window.location.href = "vendor-dashboard.html";
+      window.location.href = "vendor-login.html";
     }, 800);
 
   } catch (err) {
