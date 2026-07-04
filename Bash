@@ -1,0 +1,66 @@
+#!/bin/bash
+
+echo "🚀 Starting Charcoal Marketplace Setup..."
+
+set -e  # stop script if any command fails
+
+# =========================
+# INSTALL DEPENDENCIES
+# =========================
+echo "📦 Installing dependencies..."
+npm install
+
+# =========================
+# ENV FILE CHECK
+# =========================
+if [ ! -f .env ]; then
+  echo "⚠️ No .env found. Creating template..."
+
+  cat > .env <<EOL
+PORT=5000
+NODE_ENV=production
+JWT_SECRET=change_this_secret
+
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=
+DB_NAME=charcoal_marketplace
+
+PI_API_KEY=
+PI_APP_ID=
+EOL
+
+  echo "⚠️ IMPORTANT: Update .env before continuing!"
+else
+  echo "✅ .env file found"
+fi
+
+# =========================
+# CREATE UPLOADS DIRECTORY
+# =========================
+mkdir -p uploads
+echo "📁 uploads directory ready"
+
+# =========================
+# OPTIONAL: INSTALL PM2 (PRODUCTION)
+# =========================
+if ! command -v pm2 &> /dev/null
+then
+  echo "📦 Installing PM2..."
+  npm install -g pm2
+fi
+
+# =========================
+# START SERVER (PRODUCTION SAFE)
+# =========================
+echo "🚀 Starting server with PM2..."
+
+pm2 stop charcoal-backend || true
+pm2 delete charcoal-backend || true
+
+pm2 start server.js --name "charcoal-backend"
+
+pm2 save
+
+echo "✅ Server running successfully!"
+echo "📊 Use: pm2 logs charcoal-backend"

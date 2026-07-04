@@ -1,4 +1,4 @@
-console.log("SERVER STARTING...");
+console.log("🚀 SERVER STARTING...");
 
 const express = require("express");
 const cors = require("cors");
@@ -12,29 +12,29 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 /* =========================
-   TRUST PROXY (Render FIX)
+   TRUST PROXY (RENDER FIX)
 ========================= */
 app.set("trust proxy", 1);
 
 /* =========================
-   CORS (PI SAFE + PRODUCTION SAFE)
+   CORS (PI + PRODUCTION SAFE)
 ========================= */
-const allowedOrigins = [
-  "http://localhost:3000",
-  "http://localhost:5000"
-];
-
 app.use(cors({
   origin: function (origin, callback) {
-    // allow mobile apps / Pi browser
+    // allow mobile / Pi Browser (no origin header)
     if (!origin) return callback(null, true);
 
-    // allow local dev only strictly listed
+    // local dev only (optional)
+    const allowedOrigins = [
+      "http://localhost:3000",
+      "http://localhost:5000"
+    ];
+
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
 
-    // production fallback (safe for Pi Browser + hosted frontend)
+    // IMPORTANT: allow deployed frontend (Render / Vercel / Pi Browser)
     return callback(null, true);
   },
   methods: ["GET", "POST", "PUT", "DELETE"],
@@ -58,17 +58,20 @@ app.get("/", (req, res) => {
 });
 
 /* =========================
-   ROUTES SAFETY WRAPPER
+   SAFE ROUTE LOADER (RENDER SAFE)
 ========================= */
-function safeRoute(routePath, routeFile) {
+function safeRoute(pathRoute, filePath) {
   try {
-    app.use(routePath, require(routeFile));
-    console.log(`✅ Loaded ${routePath}`);
+    app.use(pathRoute, require(filePath));
+    console.log(`✅ Loaded: ${pathRoute}`);
   } catch (err) {
-    console.error(`❌ Failed loading ${routePath}:`, err.message);
+    console.error(`❌ Failed loading ${pathRoute}:`, err.message);
   }
 }
 
+/* =========================
+   ROUTES
+========================= */
 safeRoute("/api/auth", "./routes/auth.routes");
 safeRoute("/api/products", "./routes/product.routes");
 safeRoute("/api/orders", "./routes/order.routes");
@@ -77,7 +80,7 @@ safeRoute("/api/admin", "./routes/admin.routes");
 safeRoute("/api/notifications", "./routes/notification.routes");
 
 /* =========================
-   STATIC FILES
+   STATIC FILES (UPLOADS SAFE)
 ========================= */
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
@@ -104,9 +107,9 @@ app.use((err, req, res, next) => {
 });
 
 /* =========================
-   START SERVER (SAFE)
+   START SERVER (RENDER SAFE)
 ========================= */
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📡 API: http://localhost:${PORT}`);
+  console.log(`📡 API READY: https://charcoal-marketplace-1.onrender.com`);
 });

@@ -1,67 +1,93 @@
 const axios = require("axios");
 
-const PI_API_KEY = process.env.PI_API_KEY;
 const PI_BASE_URL = "https://api.minepi.com/v2";
-
-/* =========================
-   PI HEADERS
-========================= */
-function getHeaders() {
-  return {
-    Authorization: `Key ${PI_API_KEY}`,
-    "Content-Type": "application/json"
-  };
-}
 
 /* =========================
    FETCH PAYMENT FROM PI
 ========================= */
-async function fetchPayment(paymentId) {
+async function fetchPayment(paymentId, accessToken) {
+  if (!paymentId || !accessToken) return null;
+
   try {
     const res = await axios.get(
       `${PI_BASE_URL}/payments/${paymentId}`,
-      { headers: getHeaders() }
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        },
+        timeout: 15000
+      }
     );
 
-    return res.data;
+    return res.data || null;
 
   } catch (err) {
-    console.error("❌ Pi fetch error:", err.response?.data || err.message);
+    console.error(
+      "❌ Pi fetch error:",
+      err.response?.data || err.message
+    );
     return null;
   }
 }
 
 /* =========================
-   VERIFY PAYMENT STATUS
+   NORMALIZE PAYMENT DATA
 ========================= */
-async function verifyPayment(paymentId) {
-  const payment = await fetchPayment(paymentId);
-
+function normalizePayment(payment) {
   if (!payment) return null;
 
-  // STRICT VALIDATION (IMPORTANT FOR SECURITY)
-  const validStatuses = ["created", "approved", "completed"];
-
-  if (!validStatuses.includes(payment.status)) {
-    console.warn("⚠ Invalid Pi payment status:", payment.status);
-    return null;
-  }
-
   return {
-    id: payment.identifier,
-    status: payment.status,
-    amount: payment.amount,
-    memo: payment.memo,
-    metadata: payment.metadata,
-    user: payment.user_uid
+    id: payment.identifier || null,
+    status: payment.status || null,
+    amount: payment.amount || 0,
+    memo: payment.memo || "",
+    metadata: payment.metadata || {},
+    user_uid: payment.user_uid || null,
+    txid: payment.transaction_id || null,
+    raw: payment
   };
 }
 
 /* =========================
-   CONFIRM COMPLETION SAFELY
+   VERIFY PAYMENT (STRICT + SAFE)
 ========================= */
-async function confirmPaymentCompletion(paymentId) {
-  const payment = await fetchPayment(paymentId);
+async function verifyPayment(paymentId, accessToken) {
+  const payment = await fetchPayment(paymentId, accessToken);
+
+  if (!payment) return null;
+
+  const normalized = normalizePayment(payment);
+
+  // STRICT STATUS VALIDATION (IMPORTANT)
+  const validStatuses = [
+    "created",
+    "pending",
+    "approved",
+    "completed"
+  ];
+
+  if (!validStatuses.includes(normalized.status)) {
+    console.warn(
+      "⚠ Invalid Pi status:",
+      normalized.status
+    );
+    return null;
+  }
+
+  // EXTRA SAFETY CHECK
+  if (!normalized.id || !normalized.amount) {
+    console.warn("⚠ Incomplete Pi payment data");
+    return null;
+  }
+
+  return normalized;
+}
+
+/* =========================
+   CONFIRM COMPLETION
+========================= */
+async function confirmPaymentCompletion(paymentId, accessToken) {
+  const payment = await fetchPayment(paymentId, accessToken);
 
   if (!payment) return false;
 
@@ -69,7 +95,7 @@ async function confirmPaymentCompletion(paymentId) {
 }
 
 module.exports = {
-  verifyPayment,
   fetchPayment,
+  verifyPayment,
   confirmPaymentCompletion
 };
