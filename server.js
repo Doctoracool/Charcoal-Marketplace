@@ -55,45 +55,52 @@ app.get("/", (req, res) => {
 });
 
 /* =========================
-   ROUTES (FIXED - NO SAFE ROUTE)
+   ROUTES 
 ========================= */
-try {
-  app.use("/api/auth", require(auth.routes.js));
+
+try
+  const authRoutes = require("./routes/auth.routes.js");
+  app.use("/api/auth", authRoutes);
   console.log("✅ Auth routes loaded");
 } catch (err) {
   console.error("❌ Auth routes failed:", err.message);
 }
 
 try {
-  app.use("/api/products", require(product.routes.js));
+  const productRoutes = require("./routes/product.routes.js");
+  app.use("/api/products", productRoutes);
   console.log("✅ Product routes loaded");
 } catch (err) {
   console.error("❌ Product routes failed:", err.message);
 }
 
 try {
-  app.use("/api/orders", require(order.routes.js));
+  const orderRoutes = require("./routes/orders.routes.js");
+  app.use("/api/orders", orderRoutes);
   console.log("✅ Order routes loaded");
 } catch (err) {
   console.error("❌ Order routes failed:", err.message);
 }
 
 try {
-  app.use("/api/payments", require(payment.routes.js));
+  const paymentRoutes = require("./routes/payment.routes.js");
+  app.use("/api/payments", paymentRoutes);
   console.log("✅ Payment routes loaded");
 } catch (err) {
   console.error("❌ Payment routes failed:", err.message);
 }
 
 try {
-  app.use("/api/admin", require(admin.routes.js));
+  const adminRoutes = require("./routes/admin.routes.js");
+  app.use("/api/admin", adminRoutes);
   console.log("✅ Admin routes loaded");
 } catch (err) {
   console.error("❌ Admin routes failed:", err.message);
 }
 
 try {
-  app.use("/api/notifications", require(notification.routes.js));
+  const notificationRoutes = require("./routes/notifications.routes.js");
+  app.use("/api/notifications", notificationRoutes);
   console.log("✅ Notification routes loaded");
 } catch (err) {
   console.error("❌ Notification routes failed:", err.message);
