@@ -58,42 +58,42 @@ app.get("/", (req, res) => {
    ROUTES (FIXED - NO SAFE ROUTE)
 ========================= */
 try {
-  app.use("/api/auth", require("./routes/auth.routes"));
+  app.use("/api/auth", require(auth.routes.js));
   console.log("✅ Auth routes loaded");
 } catch (err) {
   console.error("❌ Auth routes failed:", err.message);
 }
 
 try {
-  app.use("/api/products", require("./routes/product.routes"));
+  app.use("/api/products", require(product.routes.js));
   console.log("✅ Product routes loaded");
 } catch (err) {
   console.error("❌ Product routes failed:", err.message);
 }
 
 try {
-  app.use("/api/orders", require("./routes/order.routes"));
+  app.use("/api/orders", require(order.routes.js));
   console.log("✅ Order routes loaded");
 } catch (err) {
   console.error("❌ Order routes failed:", err.message);
 }
 
 try {
-  app.use("/api/payments", require("./routes/payment.routes"));
+  app.use("/api/payments", require(payment.routes.js));
   console.log("✅ Payment routes loaded");
 } catch (err) {
   console.error("❌ Payment routes failed:", err.message);
 }
 
 try {
-  app.use("/api/admin", require("./routes/admin.routes"));
+  app.use("/api/admin", require(admin.routes.js));
   console.log("✅ Admin routes loaded");
 } catch (err) {
   console.error("❌ Admin routes failed:", err.message);
 }
 
 try {
-  app.use("/api/notifications", require("./routes/notification.routes"));
+  app.use("/api/notifications", require(notification.routes.js));
   console.log("✅ Notification routes loaded");
 } catch (err) {
   console.error("❌ Notification routes failed:", err.message);
