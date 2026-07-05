@@ -17,14 +17,12 @@ const PORT = process.env.PORT || 5000;
 app.set("trust proxy", 1);
 
 /* =========================
-   CORS (PI + PRODUCTION SAFE)
+   CORS CONFIG (PI + WEB SAFE)
 ========================= */
 app.use(cors({
   origin: function (origin, callback) {
-    // allow mobile / Pi Browser (no origin header)
     if (!origin) return callback(null, true);
 
-    // local dev only (optional)
     const allowedOrigins = [
       "http://localhost:3000",
       "http://localhost:5000"
@@ -34,7 +32,6 @@ app.use(cors({
       return callback(null, true);
     }
 
-    // IMPORTANT: allow deployed frontend (Render / Vercel / Pi Browser)
     return callback(null, true);
   },
   methods: ["GET", "POST", "PUT", "DELETE"],
@@ -58,29 +55,52 @@ app.get("/", (req, res) => {
 });
 
 /* =========================
-   SAFE ROUTE LOADER (RENDER SAFE)
+   ROUTES (FIXED - NO SAFE ROUTE)
 ========================= */
-function safeRoute(pathRoute, filePath) {
-  try {
-    app.use(pathRoute, require(filePath));
-    console.log(`✅ Loaded: ${pathRoute}`);
-  } catch (err) {
-    console.error(`❌ Failed loading ${pathRoute}:`, err.message);
-  }
+try {
+  app.use("/api/auth", require("./routes/auth.routes"));
+  console.log("✅ Auth routes loaded");
+} catch (err) {
+  console.error("❌ Auth routes failed:", err.message);
+}
+
+try {
+  app.use("/api/products", require("./routes/product.routes"));
+  console.log("✅ Product routes loaded");
+} catch (err) {
+  console.error("❌ Product routes failed:", err.message);
+}
+
+try {
+  app.use("/api/orders", require("./routes/order.routes"));
+  console.log("✅ Order routes loaded");
+} catch (err) {
+  console.error("❌ Order routes failed:", err.message);
+}
+
+try {
+  app.use("/api/payments", require("./routes/payment.routes"));
+  console.log("✅ Payment routes loaded");
+} catch (err) {
+  console.error("❌ Payment routes failed:", err.message);
+}
+
+try {
+  app.use("/api/admin", require("./routes/admin.routes"));
+  console.log("✅ Admin routes loaded");
+} catch (err) {
+  console.error("❌ Admin routes failed:", err.message);
+}
+
+try {
+  app.use("/api/notifications", require("./routes/notification.routes"));
+  console.log("✅ Notification routes loaded");
+} catch (err) {
+  console.error("❌ Notification routes failed:", err.message);
 }
 
 /* =========================
-   ROUTES
-========================= */
-safeRoute("/api/auth", "./routes/auth.routes");
-safeRoute("/api/products", "./routes/product.routes");
-safeRoute("/api/orders", "./routes/order.routes");
-safeRoute("/api/payments", "./routes/payment.routes");
-safeRoute("/api/admin", "./routes/admin.routes");
-safeRoute("/api/notifications", "./routes/notification.routes");
-
-/* =========================
-   STATIC FILES (UPLOADS SAFE)
+   STATIC FILES
 ========================= */
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
@@ -107,7 +127,7 @@ app.use((err, req, res, next) => {
 });
 
 /* =========================
-   START SERVER (RENDER SAFE)
+   START SERVER
 ========================= */
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);

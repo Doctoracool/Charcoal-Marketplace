@@ -39,7 +39,6 @@ router.post("/register", (req, res) => {
     [email],
     async (err, result) => {
       if (err) {
-        console.error(err);
         return res.status(500).json({
           success: false,
           message: "DB error"
@@ -61,7 +60,6 @@ router.post("/register", (req, res) => {
           [name, email, hashed, "vendor", "pending"],
           (err2) => {
             if (err2) {
-              console.error(err2);
               return res.status(500).json({
                 success: false,
                 message: "Register failed"
@@ -145,7 +143,7 @@ router.post("/login", (req, res) => {
 });
 
 /* =========================
-   PI LOGIN (FULL SAFE VERSION)
+   PI LOGIN (FIXED & STABLE)
 ========================= */
 router.post("/pi-login", async (req, res) => {
   const { accessToken, uid, username } = req.body || {};
@@ -158,14 +156,13 @@ router.post("/pi-login", async (req, res) => {
   }
 
   try {
-    const response = await axios.get(
-      "https://api.minepi.com/v2/me",
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`
-        }
-      }
-    );
+    // SAFE PI API CALL WITH TIMEOUT
+    const response = await axios.get("https://api.minepi.com/v2/me", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      },
+      timeout: 8000
+    });
 
     const piUser = response.data;
 
