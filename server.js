@@ -58,7 +58,7 @@ app.get("/", (req, res) => {
    ROUTES 
 ========================= */
 
-try
+try {
   const authRoutes = require("./routes/auth.routes.js");
   app.use("/api/auth", authRoutes);
   console.log("✅ Auth routes loaded");
