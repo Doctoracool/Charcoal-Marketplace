@@ -1,48 +1,50 @@
 const mysql = require("mysql2");
-require(".env").config();
+require("dotenv").config();
 
 /* =========================
-   ENV VALIDATION (CRITICAL FIX)
+   ENV VALIDATION
 ========================= */
-const requiredEnv = ["DB_HOST", "DB_USER", "DB_PASSWORD", "DB_NAME"];
+
+const requiredEnv = [
+  "DB_HOST",
+  "DB_USER",
+  "DB_PASSWORD",
+  "DB_NAME"
+];
 
 requiredEnv.forEach((key) => {
   if (!process.env[key]) {
     console.error(`❌ Missing environment variable: ${key}`);
-    process.exit(1); // prevents silent crash later
+    process.exit(1);
   }
 });
 
 /* =========================
-   DATABASE POOL
+   MYSQL CONNECTION POOL
 ========================= */
-const pool = mysql.createPool({
+
+const db = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0
 });
 
 /* =========================
-   PROMISE VERSION
+   TEST CONNECTION
 ========================= */
-const db = pool.promise();
 
-/* =========================
-   SAFE CONNECTION TEST
-========================= */
-pool.getConnection((err, connection) => {
+db.getConnection((err, connection) => {
   if (err) {
-    console.error("❌ Database connection failed:");
+    console.error("❌ MySQL Connection Error:");
     console.error(err.message);
-    process.exit(1); // IMPORTANT: stop app cleanly
+    process.exit(1);
   }
 
-  console.log("✅ MySQL connected successfully");
+  console.log("✅ MySQL Connected Successfully");
   connection.release();
 });
 
