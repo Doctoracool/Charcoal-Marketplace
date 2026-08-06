@@ -59,7 +59,7 @@ app.get("/", (req, res) => {
 ========================= */
 
 try {
-  const authRoutes = require("api/routes/auth.routes.js");
+  const authRoutes = require("./routes/auth.routes.js");
   app.use("/api/auth", authRoutes);
   console.log("✅ Auth routes loaded");
 } catch (err) {
@@ -67,7 +67,7 @@ try {
 }
 
 try {
-  const productRoutes = require("api/routes/product.routes.js");
+  const productRoutes = require("./routes/product.routes.js");
   app.use("/api/products", productRoutes);
   console.log("✅ Product routes loaded");
 } catch (err) {
@@ -75,7 +75,7 @@ try {
 }
 
 try {
-  const orderRoutes = require("api/routes/orders.routes.js");
+  const orderRoutes = require("./routes/orders.routes.js");
   app.use("/api/orders", orderRoutes);
   console.log("✅ Order routes loaded");
 } catch (err) {
@@ -83,7 +83,7 @@ try {
 }
 
 try {
-  const paymentRoutes = require("api/routes/payment.routes.js");
+  const paymentRoutes = require("./routes/payment.routes.js");
   app.use("/api/payments", paymentRoutes);
   console.log("✅ Payment routes loaded");
 } catch (err) {
@@ -91,7 +91,7 @@ try {
 }
 
 try {
-  const adminRoutes = require("api/routes/admin.routes.js");
+  const adminRoutes = require("./routes/admin.routes.js");
   app.use("/api/admin", adminRoutes);
   console.log("✅ Admin routes loaded");
 } catch (err) {
@@ -99,7 +99,7 @@ try {
 }
 
 try {
-  const notificationRoutes = require("api/routes/notifications.routes.js");
+  const notificationRoutes = require("./routes/notifications.routes.js");
   app.use("/api/notifications", notificationRoutes);
   console.log("✅ Notification routes loaded");
 } catch (err) {
