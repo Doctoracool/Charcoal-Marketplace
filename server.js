@@ -9,7 +9,7 @@ require("dotenv").config();
    APP INIT
 ========================= */
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 34446;
 
 /* =========================
    TRUST PROXY (RENDER FIX)
