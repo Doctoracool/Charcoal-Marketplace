@@ -5,10 +5,13 @@ require("dotenv").config();
    ENV VALIDATION
 ========================= */
 
-console.log("DB_HOST =", process.env.DB_HOST);
-console.log("DB_PORT =", process.env.DB_PORT);
-console.log("DB_USER =", process.env.DB_USER);
-console.log("DB_NAME =", process.env.DB_NAME);
+const requiredEnv = [
+  "DB_HOST",
+  "DB_PORT",
+  "DB_USER",
+  "DB_PASSWORD",
+  "DB_NAME"
+];
 
 requiredEnv.forEach((key) => {
   if (!process.env[key]) {
