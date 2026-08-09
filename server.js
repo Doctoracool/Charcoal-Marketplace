@@ -138,5 +138,5 @@ app.use((err, req, res, next) => {
 ========================= */
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📡 API READY: https://charcoal-marketplace-1.onrender.com`);
+  console.log(`📡 API READY: https://charcoal-marketplace-2.onrender.com`);
 });
