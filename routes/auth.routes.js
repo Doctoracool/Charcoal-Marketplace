@@ -2,7 +2,7 @@ const router = require("express").Router();
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const axios = require("axios");
-const db = require("../config/db.js");
+const db = require("../config/db");
 
 const SECRET = process.env.JWT_SECRET || "DEV_SECRET_CHANGE_ME";
 
@@ -243,6 +243,301 @@ router.post("/pi-login", async (req, res) => {
         );
       }
     );
+
+    /* =========================================================
+   ADMIN EMAIL LOGIN
+========================================================= */
+
+router.post(
+  "/admin-login",
+  (req, res) => {
+
+    const {
+      email,
+      password
+    } = req.body || {};
+
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and password are required"
+      });
+    }
+
+
+    db.query(
+      `
+      SELECT *
+      FROM users
+      WHERE email = ?
+      AND role = 'admin'
+      LIMIT 1
+      `,
+      [email],
+      async (err, result) => {
+
+        if (err) {
+
+          console.error(
+            "Admin login DB error:",
+            err
+          );
+
+          return res.status(500).json({
+            success: false,
+            message: "Database error"
+          });
+
+        }
+
+
+        if (!result.length) {
+
+          return res.status(401).json({
+            success: false,
+            message: "Invalid admin credentials"
+          });
+
+        }
+
+
+        const user =
+          result[0];
+
+
+        if (user.role !== "admin") {
+          return res.status(403).json({
+            success: false,
+            message: "Admin access denied"
+          });
+        }
+
+
+        if (user.status !== "approved") {
+          return res.status(403).json({
+            success: false,
+            message: "Admin account is not approved"
+          });
+        }
+
+
+        const passwordMatch =
+          await bcrypt.compare(
+            password,
+            user.password
+          );
+
+
+        if (!passwordMatch) {
+          return res.status(401).json({
+            success: false,
+            message: "Invalid admin credentials"
+          });
+        }
+
+
+        const token =
+          createToken(user);
+
+
+        return res.json({
+          success: true,
+          token,
+
+          user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            status: user.status
+          }
+        });
+
+      }
+    );
+
+  }
+);
+
+    /* =========================================================
+   PI ADMIN LOGIN
+========================================================= */
+
+router.post(
+  "/pi-admin-login",
+  async (req, res) => {
+
+    const {
+      accessToken,
+      uid
+    } = req.body || {};
+
+
+    if (!accessToken || !uid) {
+
+      return res.status(400).json({
+        success: false,
+        message: "Missing Pi credentials"
+      });
+
+    }
+
+
+    try {
+
+      const response =
+        await axios.get(
+          "https://api.minepi.com/v2/me",
+          {
+            headers: {
+              Authorization:
+                `Bearer ${accessToken}`
+            },
+
+            timeout: 8000
+          }
+        );
+
+
+      const piUser =
+        response.data;
+
+
+      if (
+        !piUser ||
+        !piUser.uid
+      ) {
+
+        return res.status(401).json({
+          success: false,
+          message: "Invalid Pi account"
+        });
+
+      }
+
+
+      /*
+        IMPORTANT:
+        The Pi UID is used to locate
+        an EXISTING account.
+
+        We DO NOT automatically create
+        an administrator.
+      */
+
+      const email =
+        `${piUser.uid}@pi.app`;
+
+
+      db.query(
+        `
+        SELECT *
+        FROM users
+        WHERE email = ?
+        AND role = 'admin'
+        LIMIT 1
+        `,
+        [email],
+        (err, result) => {
+
+          if (err) {
+
+            console.error(
+              "Pi admin DB error:",
+              err
+            );
+
+            return res.status(500).json({
+              success: false,
+              message: "Database error"
+            });
+
+          }
+
+
+          if (!result.length) {
+
+            return res.status(403).json({
+              success: false,
+              message:
+                "This Pi account is not registered as an administrator."
+            });
+
+          }
+
+
+          const user =
+            result[0];
+
+
+          if (
+            user.role !== "admin"
+          ) {
+
+            return res.status(403).json({
+              success: false,
+              message: "Admin access denied"
+            });
+
+          }
+
+
+          if (
+            user.status !== "approved"
+          ) {
+
+            return res.status(403).json({
+              success: false,
+              message:
+                "Administrator account is not approved."
+            });
+
+          }
+
+
+          const token =
+            createToken(user);
+
+
+          return res.json({
+
+            success: true,
+
+            token,
+
+            user: {
+              id: user.id,
+              name: user.name,
+              email: user.email,
+              role: user.role,
+              status: user.status
+            }
+
+          });
+
+        }
+      );
+
+
+    } catch (error) {
+
+      console.error(
+        "Pi admin verification error:",
+        error.message
+      );
+
+
+      return res.status(401).json({
+        success: false,
+        message:
+          "Pi account verification failed"
+      });
+
+    }
+
+  }
+);
 
   } catch (err) {
     console.error("Pi login error:", err.message);

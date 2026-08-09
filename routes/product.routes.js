@@ -142,7 +142,7 @@ router.get("/", (req, res) => {
 
       const base =
         process.env.BASE_URL ||
-        "https://charcoal-marketplace-1.onrender.com";
+        "https://charcoal-marketplace-2.onrender.com";
 
       const data = result.map(p => ({
         ...p,
