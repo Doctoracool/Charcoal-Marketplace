@@ -4,11 +4,14 @@ const db = require("../config/db");
 const SECRET = process.env.JWT_SECRET;
 
 if (!SECRET) {
-  console.error("❌ JWT_SECRET is missing from environment variables");
+  console.error(
+    "❌ JWT_SECRET is missing from environment variables"
+  );
 }
 
+
 /* =========================================================
-   VERIFY JWT + CURRENT USER STATUS
+   VERIFY JWT + CURRENT USER STATUS + ADMIN LEVEL
 ========================================================= */
 
 function verifyToken(allowedRoles = null) {
@@ -17,7 +20,9 @@ function verifyToken(allowedRoles = null) {
 
     try {
 
-      const authHeader = req.headers.authorization;
+      const authHeader =
+        req.headers.authorization;
+
 
       if (
         !authHeader ||
@@ -31,26 +36,32 @@ function verifyToken(allowedRoles = null) {
 
       }
 
+
       const token =
         authHeader.substring(7).trim();
+
 
       if (!token) {
 
         return res.status(401).json({
           success: false,
-          message: "Invalid authentication token"
+          message:
+            "Invalid authentication token"
         });
 
       }
 
+
       let decoded;
+
 
       try {
 
-        decoded = jwt.verify(
-          token,
-          SECRET
-        );
+        decoded =
+          jwt.verify(
+            token,
+            SECRET
+          );
 
       } catch (error) {
 
@@ -61,32 +72,55 @@ function verifyToken(allowedRoles = null) {
 
         return res.status(401).json({
           success: false,
-          message: "Invalid or expired token"
+          message:
+            "Invalid or expired token"
         });
 
       }
+
 
       if (!decoded.id) {
 
         return res.status(401).json({
           success: false,
-          message: "Invalid token"
+          message:
+            "Invalid token"
         });
 
       }
 
+
       /*
-       * IMPORTANT:
-       * Check the CURRENT database account.
-       *
-       * This prevents an old admin token from
-       * continuing to work after the account is
-       * rejected or its role is changed.
-       */
+      =====================================================
+        IMPORTANT
+
+        Always load the CURRENT account from MySQL.
+
+        This means if Super Admin removes someone's
+        admin access, their old JWT will no longer
+        give them admin privileges.
+      =====================================================
+      */
 
       db.query(
-        "SELECT id, name, email, role, status FROM users WHERE id=? LIMIT 1",
+        `
+        SELECT
+          id,
+          name,
+          email,
+          role,
+          status,
+          pi_uid,
+          pi_username,
+          admin_level,
+          created_at
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+        `,
+
         [decoded.id],
+
         (err, rows) => {
 
           if (err) {
@@ -98,61 +132,115 @@ function verifyToken(allowedRoles = null) {
 
             return res.status(500).json({
               success: false,
-              message: "Authentication service error"
+              message:
+                "Authentication service error"
             });
 
           }
+
 
           if (!rows.length) {
 
             return res.status(401).json({
               success: false,
-              message: "Account no longer exists"
+              message:
+                "Account no longer exists"
             });
 
           }
 
-          const user = rows[0];
+
+          const user =
+            rows[0];
+
 
           /*
-           * ACCOUNT STATUS CHECK
-           */
-
-          if (user.status !== "approved") {
-
-            return res.status(403).json({
-              success: false,
-              message: "Account is not approved"
-            });
-
-          }
-
-          /*
-           * ROLE CHECK
-           */
+          =================================================
+            ACCOUNT STATUS
+          =================================================
+          */
 
           if (
-            allowedRoles &&
-            !allowedRoles.includes(user.role)
+            user.status !==
+            "approved"
           ) {
 
             return res.status(403).json({
               success: false,
-              message: "Access denied"
+              message:
+                "Account is not approved"
             });
 
           }
 
-          /*
-           * Store CURRENT database user
-           */
 
-          req.user = user;
+          /*
+          =================================================
+            ROLE CHECK
+          =================================================
+          */
+
+          if (
+            allowedRoles &&
+            !allowedRoles.includes(
+              user.role
+            )
+          ) {
+
+            return res.status(403).json({
+              success: false,
+              message:
+                "Access denied"
+            });
+
+          }
+
+
+          /*
+          =================================================
+            NORMALIZE ADMIN LEVEL
+          =================================================
+
+            Possible values:
+
+            none
+            moderator
+            admin
+            super_admin
+          =================================================
+          */
+
+          if (
+            user.role === "admin"
+          ) {
+
+            user.admin_level =
+              user.admin_level ||
+              "admin";
+
+          } else {
+
+            user.admin_level =
+              "none";
+
+          }
+
+
+          /*
+          =================================================
+            STORE CURRENT DATABASE USER
+          =================================================
+          */
+
+          req.user =
+            user;
+
 
           next();
 
         }
       );
+
 
     } catch (error) {
 
@@ -163,7 +251,8 @@ function verifyToken(allowedRoles = null) {
 
       return res.status(500).json({
         success: false,
-        message: "Authentication system error"
+        message:
+          "Authentication system error"
       });
 
     }
@@ -177,9 +266,15 @@ function verifyToken(allowedRoles = null) {
    ADMIN ONLY
 ========================================================= */
 
-function verifyAdmin(req, res, next) {
+function verifyAdmin(
+  req,
+  res,
+  next
+) {
 
-  return verifyToken(["admin"])(
+  return verifyToken(
+    ["admin"]
+  )(
     req,
     res,
     next
@@ -189,12 +284,57 @@ function verifyAdmin(req, res, next) {
 
 
 /* =========================================================
+   SUPER ADMIN ONLY
+========================================================= */
+
+function verifySuperAdmin(
+  req,
+  res,
+  next
+) {
+
+  return verifyToken(
+    ["admin"]
+  )(
+    req,
+    res,
+    () => {
+
+      if (
+        req.user.admin_level !==
+        "super_admin"
+      ) {
+
+        return res.status(403).json({
+          success: false,
+          message:
+            "Super Admin access required"
+        });
+
+      }
+
+
+      next();
+
+    }
+  );
+
+}
+
+
+/* =========================================================
    VENDOR ONLY
 ========================================================= */
 
-function verifyVendor(req, res, next) {
+function verifyVendor(
+  req,
+  res,
+  next
+) {
 
-  return verifyToken(["vendor"])(
+  return verifyToken(
+    ["vendor"]
+  )(
     req,
     res,
     next
@@ -208,7 +348,13 @@ function verifyVendor(req, res, next) {
 ========================================================= */
 
 module.exports = {
+
   verifyToken,
+
   verifyAdmin,
+
+  verifySuperAdmin,
+
   verifyVendor
+
 };
