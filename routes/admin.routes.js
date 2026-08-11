@@ -1821,4 +1821,531 @@ router.post(
    EXPORT
 ========================================================= */
 
+/* =========================================================
+   SUPER ADMIN
+   SEND ADMIN INVITATION
+
+   POST /api/admin/invitations
+========================================================= */
+
+router.post(
+  "/invitations",
+  verifyAdmin,
+  requireSuperAdmin,
+  (req, res) => {
+
+    const {
+      pi_uid,
+      pi_username,
+      admin_level
+    } = req.body || {};
+
+    if (!pi_uid || !String(pi_uid).trim()) {
+
+      return res.status(400).json({
+        success: false,
+        message: "Pi UID is required"
+      });
+
+    }
+
+    const requestedLevel =
+      admin_level === "moderator"
+        ? "moderator"
+        : "admin";
+
+    const cleanPiUid =
+      String(pi_uid).trim();
+
+    const cleanUsername =
+      pi_username
+        ? String(pi_username).trim()
+        : null;
+
+
+    /*
+     * Prevent inviting yourself.
+     */
+
+    if (
+      req.user.pi_uid &&
+      String(req.user.pi_uid) === cleanPiUid
+    ) {
+
+      return res.status(400).json({
+        success: false,
+        message:
+          "You cannot invite yourself"
+      });
+
+    }
+
+
+    /*
+     * Check whether this Pi account exists.
+     */
+
+    db.query(
+      `
+      SELECT
+        id,
+        name,
+        email,
+        role,
+        status,
+        pi_uid,
+        pi_username,
+        admin_level
+      FROM users
+      WHERE pi_uid = ?
+      LIMIT 1
+      `,
+      [cleanPiUid],
+
+      (userErr, users) => {
+
+        if (userErr) {
+
+          console.error(
+            "Invitation user lookup error:",
+            userErr
+          );
+
+          return res.status(500).json({
+            success: false,
+            message:
+              "Failed to find Pi account"
+          });
+
+        }
+
+
+        /*
+         * If account exists, make sure
+         * it isn't already an administrator.
+         */
+
+        if (users.length) {
+
+          const user =
+            users[0];
+
+          if (
+            user.role === "admin"
+          ) {
+
+            return res.status(400).json({
+              success: false,
+              message:
+                "This Pi account is already an administrator"
+            });
+
+          }
+
+        }
+
+
+        /*
+         * Prevent duplicate active invitations.
+         */
+
+        db.query(
+          `
+          SELECT
+            id
+          FROM admin_invitations
+          WHERE invited_pi_uid = ?
+          AND status = 'pending'
+          AND expires_at > NOW()
+          LIMIT 1
+          `,
+          [cleanPiUid],
+
+          (inviteCheckErr, existing) => {
+
+            if (inviteCheckErr) {
+
+              console.error(
+                "Invitation check error:",
+                inviteCheckErr
+              );
+
+              return res.status(500).json({
+                success: false,
+                message:
+                  "Failed to check existing invitation"
+              });
+
+            }
+
+
+            if (existing.length) {
+
+              return res.status(409).json({
+                success: false,
+                message:
+                  "This Pi account already has a pending invitation"
+              });
+
+            }
+
+
+            /*
+             * Invitation expires in 7 days.
+             */
+
+            db.query(
+              `
+              INSERT INTO admin_invitations
+              (
+                invited_pi_uid,
+                invited_pi_username,
+                invited_by,
+                admin_level,
+                status,
+                expires_at
+              )
+              VALUES
+              (
+                ?, ?, ?, ?, 'pending',
+                DATE_ADD(NOW(), INTERVAL 7 DAY)
+              )
+              `,
+              [
+                cleanPiUid,
+                cleanUsername,
+                req.user.id,
+                requestedLevel
+              ],
+
+              (insertErr, result) => {
+
+                if (insertErr) {
+
+                  console.error(
+                    "Invitation creation error:",
+                    insertErr
+                  );
+
+                  return res.status(500).json({
+                    success: false,
+                    message:
+                      "Failed to create invitation"
+                  });
+
+                }
+
+
+                /*
+                 * If the user already exists,
+                 * create a notification immediately.
+                 */
+
+                if (users.length) {
+
+                  const userId =
+                    users[0].id;
+
+                  db.query(
+                    `
+                    INSERT INTO notifications
+                    (
+                      user_id,
+                      message,
+                      type
+                    )
+                    VALUES (?, ?, ?)
+                    `,
+                    [
+                      userId,
+                      `You have received an invitation from the Super Admin to apply for ${requestedLevel} access.`,
+                      "admin_invitation"
+                    ],
+                    notificationErr => {
+
+                      if (notificationErr) {
+
+                        console.error(
+                          "Invitation notification error:",
+                          notificationErr
+                        );
+
+                      }
+
+                    }
+                  );
+
+                }
+
+
+                return res.status(201).json({
+
+                  success: true,
+
+                  message:
+                    `Admin invitation sent successfully to ${cleanUsername || cleanPiUid}`,
+
+                  invitation: {
+                    id: result.insertId,
+                    pi_uid: cleanPiUid,
+                    pi_username: cleanUsername,
+                    admin_level: requestedLevel,
+                    status: "pending"
+                  }
+
+                });
+
+              }
+            );
+
+          }
+        );
+
+      }
+    );
+
+  }
+);
+
+/* =========================================================
+   SUPER ADMIN
+   GET ADMIN INVITATIONS
+
+   GET /api/admin/invitations
+========================================================= */
+
+router.get(
+  "/invitations",
+  verifyAdmin,
+  requireSuperAdmin,
+  (req, res) => {
+
+    db.query(
+      `
+      SELECT
+        ai.id,
+        ai.invited_pi_uid,
+        ai.invited_pi_username,
+        ai.admin_level,
+        ai.status,
+        ai.expires_at,
+        ai.accepted_at,
+        ai.revoked_at,
+        ai.created_at,
+
+        u.name AS invited_name,
+        u.email AS invited_email,
+
+        inviter.name AS invited_by_name,
+        inviter.pi_username AS invited_by_username
+
+      FROM admin_invitations ai
+
+      LEFT JOIN users u
+        ON ai.invited_pi_uid = u.pi_uid
+
+      LEFT JOIN users inviter
+        ON ai.invited_by = inviter.id
+
+      ORDER BY ai.created_at DESC
+      `,
+
+      (err, invitations) => {
+
+        if (err) {
+
+          console.error(
+            "Load invitations error:",
+            err
+          );
+
+          return res.status(500).json({
+            success: false,
+            message:
+              "Failed to load invitations"
+          });
+
+        }
+
+
+        res.json({
+
+          success: true,
+
+          invitations:
+            invitations || []
+
+        });
+
+      }
+    );
+
+  }
+);
+
+/* =========================================================
+   SUPER ADMIN
+   REVOKE INVITATION
+
+   POST /api/admin/invitations/:id/revoke
+========================================================= */
+
+router.post(
+  "/invitations/:id/revoke",
+  verifyAdmin,
+  requireSuperAdmin,
+  (req, res) => {
+
+    const invitationId =
+      Number(req.params.id);
+
+
+    if (
+      !Number.isInteger(invitationId)
+    ) {
+
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid invitation ID"
+      });
+
+    }
+
+
+    db.query(
+      `
+      SELECT
+        id,
+        invited_pi_uid,
+        invited_pi_username,
+        status
+      FROM admin_invitations
+      WHERE id = ?
+      AND status = 'pending'
+      LIMIT 1
+      `,
+      [invitationId],
+
+      (err, invitations) => {
+
+        if (err) {
+
+          console.error(err);
+
+          return res.status(500).json({
+            success: false,
+            message:
+              "Database error"
+          });
+
+        }
+
+
+        if (!invitations.length) {
+
+          return res.status(404).json({
+            success: false,
+            message:
+              "Pending invitation not found"
+          });
+
+        }
+
+
+        const invitation =
+          invitations[0];
+
+
+        db.query(
+          `
+          UPDATE admin_invitations
+          SET
+            status = 'revoked',
+            revoked_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+          AND status = 'pending'
+          `,
+          [invitationId],
+
+          (updateErr, result) => {
+
+            if (updateErr) {
+
+              console.error(
+                "Revoke invitation error:",
+                updateErr
+              );
+
+              return res.status(500).json({
+                success: false,
+                message:
+                  "Failed to revoke invitation"
+              });
+
+            }
+
+
+            /*
+             * Notify the invited user if
+             * the account exists.
+             */
+
+            db.query(
+              `
+              SELECT id
+              FROM users
+              WHERE pi_uid = ?
+              LIMIT 1
+              `,
+              [invitation.invited_pi_uid],
+
+              (userErr, users) => {
+
+                if (
+                  !userErr &&
+                  users.length
+                ) {
+
+                  db.query(
+                    `
+                    INSERT INTO notifications
+                    (
+                      user_id,
+                      message,
+                      type
+                    )
+                    VALUES (?, ?, ?)
+                    `,
+                    [
+                      users[0].id,
+                      "Your administrator invitation has been revoked by the Super Admin.",
+                      "admin_invitation"
+                    ]
+                  );
+
+                }
+
+              }
+            );
+
+
+            return res.json({
+
+              success: true,
+
+              message:
+                "Invitation revoked successfully"
+
+            });
+
+          }
+        );
+
+      }
+    );
+
+  }
+);
+
 module.exports = router;

@@ -9,6 +9,7 @@ const db = require("../config/db");
 const SECRET =
   process.env.JWT_SECRET || "DEV_SECRET_CHANGE_ME";
 
+
 /*
 =========================================================
   PI SUPER ADMIN
@@ -63,9 +64,15 @@ function publicUser(user) {
     email: user.email,
     role: user.role,
     status: user.status,
-    pi_uid: user.pi_uid || null,
-    pi_username: user.pi_username || null,
-    admin_level: user.admin_level || "none"
+
+    pi_uid:
+      user.pi_uid || null,
+
+    pi_username:
+      user.pi_username || null,
+
+    admin_level:
+      user.admin_level || "none"
   };
 
 }
@@ -79,21 +86,35 @@ function publicUser(user) {
 
 async function verifyPiAccount(accessToken) {
 
-  const response = await axios.get(
-    "https://api.minepi.com/v2/me",
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`
-      },
-      timeout: 8000
-    }
-  );
+  const response =
+    await axios.get(
+      "https://api.minepi.com/v2/me",
+      {
+        headers: {
+          Authorization:
+            `Bearer ${accessToken}`
+        },
 
-  const piUser = response.data;
+        timeout: 8000
+      }
+    );
 
-  if (!piUser || !piUser.uid) {
-    throw new Error("Invalid Pi account");
+
+  const piUser =
+    response.data;
+
+
+  if (
+    !piUser ||
+    !piUser.uid
+  ) {
+
+    throw new Error(
+      "Invalid Pi account"
+    );
+
   }
+
 
   return piUser;
 
@@ -106,231 +127,316 @@ async function verifyPiAccount(accessToken) {
 =========================================================
 */
 
-router.post("/register", (req, res) => {
+router.post(
+  "/register",
+  (req, res) => {
 
-  const {
-    name,
-    email,
-    password
-  } = req.body || {};
-
-
-  if (!name || !email || !password) {
-
-    return res.status(400).json({
-      success: false,
-      message: "All fields required"
-    });
-
-  }
+    const {
+      name,
+      email,
+      password
+    } = req.body || {};
 
 
-  db.query(
-    "SELECT id FROM users WHERE email=?",
-    [email],
+    if (
+      !name ||
+      !email ||
+      !password
+    ) {
 
-    async (err, result) => {
+      return res.status(400).json({
 
-      if (err) {
+        success: false,
 
-        console.error(
-          "Vendor registration DB error:",
-          err
-        );
+        message:
+          "All fields required"
 
-        return res.status(500).json({
-          success: false,
-          message: "Database error"
-        });
+      });
 
-      }
+    }
 
 
-      if (result.length > 0) {
+    db.query(
+      "SELECT id FROM users WHERE email=?",
+      [email],
 
-        return res.status(409).json({
-          success: false,
-          message: "Email already exists"
-        });
+      async (err, result) => {
 
-      }
+        if (err) {
+
+          console.error(
+            "Vendor registration DB error:",
+            err
+          );
+
+          return res.status(500).json({
+
+            success: false,
+
+            message:
+              "Database error"
+
+          });
+
+        }
 
 
-      try {
+        if (
+          result.length > 0
+        ) {
 
-        const hashed =
-          await bcrypt.hash(password, 10);
+          return res.status(409).json({
+
+            success: false,
+
+            message:
+              "Email already exists"
+
+          });
+
+        }
 
 
-        db.query(
-          `
-          INSERT INTO users
-          (
-            name,
-            email,
-            password,
-            role,
-            status,
-            admin_level
-          )
-          VALUES (?,?,?,?,?,?)
-          `,
-          [
-            name,
-            email,
-            hashed,
-            "vendor",
-            "pending",
-            "none"
-          ],
+        try {
 
-          (err2) => {
+          const hashed =
+            await bcrypt.hash(
+              password,
+              10
+            );
 
-            if (err2) {
 
-              console.error(
-                "Vendor registration error:",
-                err2
-              );
+          db.query(
+            `
+            INSERT INTO users
+            (
+              name,
+              email,
+              password,
+              role,
+              status,
+              admin_level
+            )
+            VALUES (?,?,?,?,?,?)
+            `,
 
-              return res.status(500).json({
-                success: false,
-                message: "Register failed"
+            [
+              name,
+              email,
+              hashed,
+              "vendor",
+              "pending",
+              "none"
+            ],
+
+            (err2) => {
+
+              if (err2) {
+
+                console.error(
+                  "Vendor registration error:",
+                  err2
+                );
+
+                return res.status(500).json({
+
+                  success: false,
+
+                  message:
+                    "Register failed"
+
+                });
+
+              }
+
+
+              return res.json({
+
+                success: true,
+
+                message:
+                  "Vendor submitted for approval"
+
               });
 
             }
+          );
 
 
-            return res.json({
-              success: true,
-              message:
-                "Vendor submitted for approval"
-            });
+        } catch (error) {
 
-          }
-        );
+          return res.status(500).json({
 
+            success: false,
 
-      } catch (error) {
+            message:
+              "Encryption error"
 
-        return res.status(500).json({
-          success: false,
-          message: "Encryption error"
-        });
+          });
+
+        }
 
       }
+    );
 
-    }
-  );
-
-});
+  }
+);
 
 
 /*
 =========================================================
   EMAIL LOGIN
-  LEGACY BUYER / VENDOR LOGIN
+  LEGACY BUYER / VENDOR / ADMIN LOGIN
 =========================================================
 */
 
-router.post("/login", (req, res) => {
+router.post(
+  "/login",
+  (req, res) => {
 
-  const {
-    email,
-    password
-  } = req.body || {};
-
-
-  if (!email || !password) {
-
-    return res.status(400).json({
-      success: false,
-      message: "Missing fields"
-    });
-
-  }
+    const {
+      email,
+      password
+    } = req.body || {};
 
 
-  db.query(
-    "SELECT * FROM users WHERE email=? LIMIT 1",
-    [email],
+    if (
+      !email ||
+      !password
+    ) {
 
-    async (err, result) => {
+      return res.status(400).json({
 
-      if (err) {
+        success: false,
 
-        console.error(
-          "Email login DB error:",
-          err
-        );
-
-        return res.status(500).json({
-          success: false,
-          message: "Database error"
-        });
-
-      }
-
-
-      if (!result.length) {
-
-        return res.status(401).json({
-          success: false,
-          message: "User not found"
-        });
-
-      }
-
-
-      const user = result[0];
-
-
-      if (user.status !== "approved") {
-
-        return res.status(403).json({
-          success: false,
-          message: "Account not approved"
-        });
-
-      }
-
-
-      const match =
-        await bcrypt.compare(
-          password,
-          user.password
-        );
-
-
-      if (!match) {
-
-        return res.status(401).json({
-          success: false,
-          message: "Wrong password"
-        });
-
-      }
-
-
-      const token =
-        createToken(user);
-
-
-      return res.json({
-
-        success: true,
-
-        token,
-
-        user:
-          publicUser(user)
+        message:
+          "Missing fields"
 
       });
 
     }
-  );
 
-});
+
+    db.query(
+      `
+      SELECT *
+      FROM users
+      WHERE email=?
+      LIMIT 1
+      `,
+      [email],
+
+      async (err, result) => {
+
+        if (err) {
+
+          console.error(
+            "Email login DB error:",
+            err
+          );
+
+          return res.status(500).json({
+
+            success: false,
+
+            message:
+              "Database error"
+
+          });
+
+        }
+
+
+        if (
+          !result.length
+        ) {
+
+          return res.status(401).json({
+
+            success: false,
+
+            message:
+              "User not found"
+
+          });
+
+        }
+
+
+        const user =
+          result[0];
+
+
+        /*
+        ---------------------------------------------
+          ACCOUNT MUST BE APPROVED
+        ---------------------------------------------
+        */
+
+        if (
+          user.status !==
+          "approved"
+        ) {
+
+          return res.status(403).json({
+
+            success: false,
+
+            message:
+              "Account not approved"
+
+          });
+
+        }
+
+
+        const match =
+          await bcrypt.compare(
+            password,
+            user.password
+          );
+
+
+        if (!match) {
+
+          return res.status(401).json({
+
+            success: false,
+
+            message:
+              "Wrong password"
+
+          });
+
+        }
+
+
+        /*
+        ---------------------------------------------
+          CREATE JWT
+        ---------------------------------------------
+        */
+
+        const token =
+          createToken(user);
+
+
+        return res.json({
+
+          success: true,
+
+          token,
+
+          user:
+            publicUser(user)
+
+        });
+
+      }
+    );
+
+  }
+);
 
 
 /*
@@ -352,8 +458,12 @@ router.post(
     if (!accessToken) {
 
       return res.status(400).json({
+
         success: false,
-        message: "Missing Pi access token"
+
+        message:
+          "Missing Pi access token"
+
       });
 
     }
@@ -393,7 +503,12 @@ router.post(
       */
 
       db.query(
-        "SELECT * FROM users WHERE pi_uid=? LIMIT 1",
+        `
+        SELECT *
+        FROM users
+        WHERE pi_uid=?
+        LIMIT 1
+        `,
         [verifiedUid],
 
         (err, result) => {
@@ -406,8 +521,12 @@ router.post(
             );
 
             return res.status(500).json({
+
               success: false,
-              message: "Database error"
+
+              message:
+                "Database error"
+
             });
 
           }
@@ -419,7 +538,9 @@ router.post(
           =========================================
           */
 
-          if (result.length > 0) {
+          if (
+            result.length > 0
+          ) {
 
             const user =
               result[0];
@@ -431,13 +552,36 @@ router.post(
             ) {
 
               return res.status(403).json({
+
                 success: false,
+
                 message:
                   "Account not approved"
+
               });
 
             }
 
+
+            /*
+            ---------------------------------------
+              IMPORTANT
+            ---------------------------------------
+
+              If this user has already been
+              approved as:
+
+                admin
+                moderator
+                super_admin
+
+              their current database role is
+              preserved.
+
+              They do NOT need to apply again.
+
+            ---------------------------------------
+            */
 
             const token =
               createToken(user);
@@ -485,6 +629,7 @@ router.post(
             )
             VALUES (?,?,?,?,?,?,?,?)
             `,
+
             [
               verifiedUsername,
               email,
@@ -506,9 +651,12 @@ router.post(
                 );
 
                 return res.status(500).json({
+
                   success: false,
+
                   message:
                     "Failed to create Pi user"
+
                 });
 
               }
@@ -521,7 +669,10 @@ router.post(
                 WHERE id=?
                 LIMIT 1
                 `,
-                [insertResult.insertId],
+
+                [
+                  insertResult.insertId
+                ],
 
                 (err3, rows) => {
 
@@ -531,9 +682,12 @@ router.post(
                   ) {
 
                     return res.status(500).json({
+
                       success: false,
+
                       message:
                         "User fetch failed"
+
                     });
 
                   }
@@ -593,11 +747,21 @@ router.post(
 
 /*
 =========================================================
-  PI SUPER ADMIN LOGIN
+  PI ADMIN LOGIN
 =========================================================
 
-  ONLY DoctorACool1 can use this route
-  to become the Super Admin.
+  THIS ROUTE IS USED BY:
+
+    1. Super Admin
+    2. Approved Admin
+    3. Approved Moderator
+
+  IMPORTANT:
+
+  A normal buyer CANNOT become an admin here.
+
+  The user's administrator status must already
+  exist in the users table.
 
 =========================================================
 */
@@ -614,9 +778,12 @@ router.post(
     if (!accessToken) {
 
       return res.status(400).json({
+
         success: false,
+
         message:
           "Missing Pi access token"
+
       });
 
     }
@@ -626,7 +793,7 @@ router.post(
 
       /*
       ---------------------------------------------
-        VERIFY PI ACCOUNT
+        VERIFY PI ACCOUNT DIRECTLY WITH PI
       ---------------------------------------------
       */
 
@@ -641,40 +808,14 @@ router.post(
 
 
       const verifiedUsername =
-        piUser.username;
+        piUser.username ||
+        "Pi User";
 
 
       /*
-      ---------------------------------------------
-        CHECK SUPER ADMIN USERNAME
-      ---------------------------------------------
-      */
-
-      if (
-        verifiedUsername !==
-        PI_SUPER_ADMIN_USERNAME
-      ) {
-
-        return res.status(403).json({
-
-          success: false,
-
-          message:
-            "This Pi account is not authorized as the Super Admin."
-
-        });
-
-      }
-
-
-      const email =
-        `${verifiedUid}@pi.app`;
-
-
-      /*
-      ---------------------------------------------
-        CHECK EXISTING ACCOUNT
-      ---------------------------------------------
+      =============================================
+        FIRST: CHECK DATABASE ACCOUNT
+      =============================================
       */
 
       db.query(
@@ -691,14 +832,17 @@ router.post(
           if (err) {
 
             console.error(
-              "Pi Super Admin DB error:",
+              "Pi admin login DB error:",
               err
             );
 
             return res.status(500).json({
+
               success: false,
+
               message:
                 "Database error"
+
             });
 
           }
@@ -706,11 +850,13 @@ router.post(
 
           /*
           =========================================
-            SUPER ADMIN ALREADY EXISTS
+            USER EXISTS
           =========================================
           */
 
-          if (result.length > 0) {
+          if (
+            result.length > 0
+          ) {
 
             const user =
               result[0];
@@ -718,102 +864,147 @@ router.post(
 
             /*
             ---------------------------------------
-              FORCE THIS SPECIFIC PI ACCOUNT TO
-              REMAIN THE SUPER ADMIN
+              CHECK ACCOUNT STATUS
             ---------------------------------------
             */
 
-            db.query(
-              `
-              UPDATE users
-              SET
-                name=?,
-                email=?,
-                role='admin',
-                status='approved',
-                pi_username=?,
-                admin_level='super_admin'
-              WHERE pi_uid=?
-              `,
-              [
-                verifiedUsername,
-                email,
-                verifiedUsername,
-                verifiedUid
-              ],
+            if (
+              user.status !==
+              "approved"
+            ) {
 
-              (updateErr) => {
+              return res.status(403).json({
 
-                if (updateErr) {
+                success: false,
 
-                  console.error(
-                    "Super Admin update error:",
-                    updateErr
-                  );
+                message:
+                  "Administrator account is not approved."
 
-                  return res.status(500).json({
-                    success: false,
-                    message:
-                      "Failed to authorize Super Admin"
-                  });
+              });
 
-                }
+            }
 
 
-                db.query(
-                  `
-                  SELECT *
-                  FROM users
-                  WHERE pi_uid=?
-                  LIMIT 1
-                  `,
-                  [verifiedUid],
+            /*
+            ---------------------------------------
+              CHECK ADMIN ROLE
+            ---------------------------------------
+            */
 
-                  (fetchErr, rows) => {
+            if (
+              user.role !==
+              "admin"
+            ) {
 
-                    if (
-                      fetchErr ||
-                      !rows.length
-                    ) {
+              return res.status(403).json({
 
-                      return res.status(500).json({
-                        success: false,
-                        message:
-                          "Super Admin fetch failed"
-                      });
+                success: false,
 
-                    }
+                message:
+                  "This Pi account is not an administrator."
+
+              });
+
+            }
 
 
-                    const admin =
-                      rows[0];
+            /*
+            ---------------------------------------
+              CHECK ADMIN LEVEL
+            ---------------------------------------
+
+              Only these levels can enter
+              the Admin Dashboard.
+
+            ---------------------------------------
+            */
+
+            if (
+              user.admin_level !==
+                "super_admin" &&
+              user.admin_level !==
+                "admin" &&
+              user.admin_level !==
+                "moderator"
+            ) {
+
+              return res.status(403).json({
+
+                success: false,
+
+                message:
+                  "This Pi account is not authorized for the Admin Panel."
+
+              });
+
+            }
 
 
-                    const token =
-                      createToken(admin);
+            /*
+            =====================================
+              APPROVED ADMINISTRATOR FOUND
+            =====================================
+
+              IMPORTANT:
+
+              No application is required.
+
+              The Super Admin has already approved
+              this account.
+
+            =====================================
+            */
+
+            const token =
+              createToken(user);
 
 
-                    return res.json({
+            return res.json({
 
-                      success: true,
+              success: true,
 
-                      message:
-                        "Super Admin login successful",
+              message:
+                user.admin_level ===
+                "super_admin"
 
-                      token,
+                  ? "Super Admin login successful"
 
-                      user:
-                        publicUser(admin)
+                  : "Administrator login successful",
 
-                    });
+              token,
 
-                  }
-                );
+              user:
+                publicUser(user)
 
-              }
-            );
+            });
 
-            return;
+          }
+
+
+          /*
+          =========================================
+            NO DATABASE ACCOUNT FOUND
+          =========================================
+
+            This is where we check whether this is
+            the designated Super Admin.
+
+          =========================================
+          */
+
+          if (
+            verifiedUsername !==
+            PI_SUPER_ADMIN_USERNAME
+          ) {
+
+            return res.status(403).json({
+
+              success: false,
+
+              message:
+                "This Pi account is not an authorized administrator."
+
+            });
 
           }
 
@@ -823,11 +1014,15 @@ router.post(
             FIRST SUPER ADMIN CREATION
           =========================================
 
-            DoctorACool1 is the designated
-            Super Admin.
+            Only the configured Pi username can
+            create the initial Super Admin account.
 
           =========================================
           */
+
+          const email =
+            `${verifiedUid}@pi.app`;
+
 
           const hashed =
             bcrypt.hashSync(
@@ -851,6 +1046,7 @@ router.post(
             )
             VALUES (?,?,?,?,?,?,?,?)
             `,
+
             [
               verifiedUsername,
               email,
@@ -872,9 +1068,12 @@ router.post(
                 );
 
                 return res.status(500).json({
+
                   success: false,
+
                   message:
                     "Failed to create Super Admin"
+
                 });
 
               }
@@ -887,7 +1086,10 @@ router.post(
                 WHERE id=?
                 LIMIT 1
                 `,
-                [insertResult.insertId],
+
+                [
+                  insertResult.insertId
+                ],
 
                 (fetchErr, rows) => {
 
@@ -897,9 +1099,12 @@ router.post(
                   ) {
 
                     return res.status(500).json({
+
                       success: false,
+
                       message:
                         "Super Admin fetch failed"
+
                     });
 
                   }
@@ -940,7 +1145,7 @@ router.post(
     } catch (error) {
 
       console.error(
-        "Pi Super Admin verification error:",
+        "Pi admin verification error:",
         error.message
       );
 
