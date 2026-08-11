@@ -98,6 +98,11 @@ try {
   console.error("❌ Admin routes failed:", err.message);
 }
 
+app.use(
+  "/api/admin-request",
+  require("./routes/adminRequest.routes")
+);
+
 try {
   const notificationRoutes = require("./routes/notifications.routes.js");
   app.use("/api/notifications", notificationRoutes);
