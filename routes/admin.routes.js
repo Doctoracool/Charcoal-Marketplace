@@ -8,6 +8,40 @@ const {
 
 
 /* =========================================================
+   HELPER: CHECK SUPER ADMIN
+========================================================= */
+
+function requireSuperAdmin(req, res, next) {
+
+  if (!req.user) {
+
+    return res.status(401).json({
+      success: false,
+      message: "Authentication required"
+    });
+
+  }
+
+
+  if (
+    req.user.role !== "admin" ||
+    req.user.admin_level !== "super_admin"
+  ) {
+
+    return res.status(403).json({
+      success: false,
+      message: "Super Admin access required"
+    });
+
+  }
+
+
+  next();
+
+}
+
+
+/* =========================================================
    ADMIN IDENTITY
    GET /api/admin/me
 ========================================================= */
@@ -17,15 +51,91 @@ router.get(
   verifyAdmin,
   (req, res) => {
 
-    res.json({
-      success: true,
-      authenticated: true,
-      admin: {
-        id: req.user.id,
-        email: req.user.email,
-        role: req.user.role
+    db.query(
+      `
+      SELECT
+        id,
+        name,
+        email,
+        role,
+        status,
+        pi_uid,
+        pi_username,
+        admin_level,
+        created_at
+      FROM users
+      WHERE id = ?
+      LIMIT 1
+      `,
+      [req.user.id],
+
+      (err, rows) => {
+
+        if (err) {
+
+          console.error(
+            "Admin identity error:",
+            err
+          );
+
+          return res.status(500).json({
+            success: false,
+            message: "Failed to load administrator"
+          });
+
+        }
+
+
+        if (!rows.length) {
+
+          return res.status(404).json({
+            success: false,
+            message: "Administrator not found"
+          });
+
+        }
+
+
+        const admin =
+          rows[0];
+
+
+        if (
+          admin.role !== "admin" ||
+          admin.status !== "approved"
+        ) {
+
+          return res.status(403).json({
+            success: false,
+            message: "Admin access denied"
+          });
+
+        }
+
+
+        res.json({
+
+          success: true,
+
+          authenticated: true,
+
+          admin: {
+            id: admin.id,
+            name: admin.name,
+            email: admin.email,
+            role: admin.role,
+            status: admin.status,
+            pi_uid: admin.pi_uid,
+            pi_username: admin.pi_username,
+            admin_level:
+              admin.admin_level || "none",
+            created_at: admin.created_at
+          }
+
+        });
+
       }
-    });
+    );
 
   }
 );
@@ -43,66 +153,99 @@ router.get(
 
     const stats = {};
 
+
     db.query(
       "SELECT COUNT(*) AS count FROM users",
+
       (err, usersResult) => {
 
         if (err) {
+
           console.error(err);
 
           return res.status(500).json({
             success: false,
             message: "Failed to load users"
           });
+
         }
 
+
         stats.users =
-          usersResult[0].count;
+          Number(usersResult[0].count);
 
 
         db.query(
-          "SELECT COUNT(*) AS count FROM users WHERE role='vendor'",
+          `
+          SELECT COUNT(*) AS count
+          FROM users
+          WHERE role = 'vendor'
+          `,
+
           (err, vendorsResult) => {
 
             if (err) {
+
               return res.status(500).json({
                 success: false,
                 message: "Failed to load vendors"
               });
+
             }
 
+
             stats.vendors =
-              vendorsResult[0].count;
+              Number(vendorsResult[0].count);
 
 
             db.query(
-              "SELECT COUNT(*) AS count FROM products",
+              `
+              SELECT COUNT(*) AS count
+              FROM products
+              `,
+
               (err, productsResult) => {
 
                 if (err) {
+
                   return res.status(500).json({
                     success: false,
-                    message: "Failed to load products"
+                    message:
+                      "Failed to load products"
                   });
+
                 }
 
+
                 stats.products =
-                  productsResult[0].count;
+                  Number(
+                    productsResult[0].count
+                  );
 
 
                 db.query(
-                  "SELECT COUNT(*) AS count FROM orders",
+                  `
+                  SELECT COUNT(*) AS count
+                  FROM orders
+                  `,
+
                   (err, ordersResult) => {
 
                     if (err) {
+
                       return res.status(500).json({
                         success: false,
-                        message: "Failed to load orders"
+                        message:
+                          "Failed to load orders"
                       });
+
                     }
 
+
                     stats.orders =
-                      ordersResult[0].count;
+                      Number(
+                        ordersResult[0].count
+                      );
 
 
                     db.query(
@@ -119,19 +262,25 @@ router.get(
                         'completed'
                       )
                       `,
+
                       (err, salesResult) => {
 
                         if (err) {
+
                           return res.status(500).json({
                             success: false,
-                            message: "Failed to load sales"
+                            message:
+                              "Failed to load sales"
                           });
+
                         }
+
 
                         stats.sales =
                           Number(
                             salesResult[0].total || 0
                           );
+
 
                         res.json({
                           success: true,
@@ -159,6 +308,7 @@ router.get(
 
 /* =========================================================
    PENDING PRODUCTS
+   GET /api/admin/products/pending
 ========================================================= */
 
 router.get(
@@ -178,6 +328,7 @@ router.get(
       WHERE p.status = 'pending'
       ORDER BY p.created_at DESC
       `,
+
       (err, result) => {
 
         if (err) {
@@ -186,10 +337,12 @@ router.get(
 
           return res.status(500).json({
             success: false,
-            message: "Failed to load pending products"
+            message:
+              "Failed to load pending products"
           });
 
         }
+
 
         res.json(
           result || []
@@ -204,6 +357,7 @@ router.get(
 
 /* =========================================================
    PENDING VENDORS
+   GET /api/admin/vendors/pending
 ========================================================= */
 
 router.get(
@@ -225,6 +379,7 @@ router.get(
       AND status = 'pending'
       ORDER BY created_at DESC
       `,
+
       (err, result) => {
 
         if (err) {
@@ -233,10 +388,12 @@ router.get(
 
           return res.status(500).json({
             success: false,
-            message: "Failed to load pending vendors"
+            message:
+              "Failed to load pending vendors"
           });
 
         }
+
 
         res.json(
           result || []
@@ -251,6 +408,7 @@ router.get(
 
 /* =========================================================
    APPROVE PRODUCT
+   POST /api/admin/products/approve/:id
 ========================================================= */
 
 router.post(
@@ -261,12 +419,16 @@ router.post(
     const id =
       Number(req.params.id);
 
+
     if (!Number.isInteger(id)) {
+
       return res.status(400).json({
         success: false,
         message: "Invalid product ID"
       });
+
     }
+
 
     db.query(
       `
@@ -277,22 +439,33 @@ router.post(
       WHERE id = ?
       AND status = 'pending'
       `,
+
       [id],
+
       (err, products) => {
 
         if (err) {
+
+          console.error(err);
+
           return res.status(500).json({
             success: false,
             message: "Database error"
           });
+
         }
 
+
         if (!products.length) {
+
           return res.status(404).json({
             success: false,
-            message: "Pending product not found"
+            message:
+              "Pending product not found"
           });
+
         }
+
 
         const vendorId =
           products[0].vendor_id;
@@ -304,34 +477,60 @@ router.post(
           SET status = 'approved'
           WHERE id = ?
           `,
+
           [id],
+
           (updateErr) => {
 
             if (updateErr) {
+
+              console.error(updateErr);
+
               return res.status(500).json({
                 success: false,
-                message: "Product approval failed"
+                message:
+                  "Product approval failed"
               });
+
             }
 
 
             db.query(
               `
               INSERT INTO notifications
-              (user_id, message, type)
+              (
+                user_id,
+                message,
+                type
+              )
               VALUES (?, ?, ?)
               `,
+
               [
                 vendorId,
                 "Your product has been approved ✅",
                 "product"
-              ]
+              ],
+
+              (notificationErr) => {
+
+                if (notificationErr) {
+
+                  console.error(
+                    "Notification error:",
+                    notificationErr
+                  );
+
+                }
+
+              }
             );
 
 
             res.json({
               success: true,
-              message: "Product approved"
+              message:
+                "Product approved"
             });
 
           }
@@ -346,6 +545,7 @@ router.post(
 
 /* =========================================================
    REJECT PRODUCT
+   POST /api/admin/products/reject/:id
 ========================================================= */
 
 router.post(
@@ -356,12 +556,16 @@ router.post(
     const id =
       Number(req.params.id);
 
+
     if (!Number.isInteger(id)) {
+
       return res.status(400).json({
         success: false,
         message: "Invalid product ID"
       });
+
     }
+
 
     db.query(
       `
@@ -372,22 +576,31 @@ router.post(
       WHERE id = ?
       AND status = 'pending'
       `,
+
       [id],
+
       (err, products) => {
 
         if (err) {
+
           return res.status(500).json({
             success: false,
             message: "Database error"
           });
+
         }
 
+
         if (!products.length) {
+
           return res.status(404).json({
             success: false,
-            message: "Pending product not found"
+            message:
+              "Pending product not found"
           });
+
         }
+
 
         const vendorId =
           products[0].vendor_id;
@@ -399,34 +612,58 @@ router.post(
           SET status = 'rejected'
           WHERE id = ?
           `,
+
           [id],
+
           (updateErr) => {
 
             if (updateErr) {
+
               return res.status(500).json({
                 success: false,
-                message: "Product rejection failed"
+                message:
+                  "Product rejection failed"
               });
+
             }
 
 
             db.query(
               `
               INSERT INTO notifications
-              (user_id, message, type)
+              (
+                user_id,
+                message,
+                type
+              )
               VALUES (?, ?, ?)
               `,
+
               [
                 vendorId,
                 "Your product was rejected ❌",
                 "product"
-              ]
+              ],
+
+              (notificationErr) => {
+
+                if (notificationErr) {
+
+                  console.error(
+                    "Notification error:",
+                    notificationErr
+                  );
+
+                }
+
+              }
             );
 
 
             res.json({
               success: true,
-              message: "Product rejected"
+              message:
+                "Product rejected"
             });
 
           }
@@ -441,6 +678,7 @@ router.post(
 
 /* =========================================================
    APPROVE VENDOR
+   POST /api/admin/vendors/approve/:id
 ========================================================= */
 
 router.post(
@@ -451,12 +689,16 @@ router.post(
     const id =
       Number(req.params.id);
 
+
     if (!Number.isInteger(id)) {
+
       return res.status(400).json({
         success: false,
         message: "Invalid vendor ID"
       });
+
     }
+
 
     db.query(
       `
@@ -466,41 +708,71 @@ router.post(
       AND role = 'vendor'
       AND status = 'pending'
       `,
+
       [id],
+
       (err, result) => {
 
         if (err) {
+
           return res.status(500).json({
             success: false,
-            message: "Vendor approval failed"
+            message:
+              "Vendor approval failed"
           });
+
         }
 
-        if (result.affectedRows === 0) {
+
+        if (
+          result.affectedRows === 0
+        ) {
+
           return res.status(404).json({
             success: false,
-            message: "Pending vendor not found"
+            message:
+              "Pending vendor not found"
           });
+
         }
 
 
         db.query(
           `
           INSERT INTO notifications
-          (user_id, message, type)
+          (
+            user_id,
+            message,
+            type
+          )
           VALUES (?, ?, ?)
           `,
+
           [
             id,
             "Your vendor account has been approved 🎉",
             "vendor"
-          ]
+          ],
+
+          (notificationErr) => {
+
+            if (notificationErr) {
+
+              console.error(
+                "Notification error:",
+                notificationErr
+              );
+
+            }
+
+          }
         );
 
 
         res.json({
           success: true,
-          message: "Vendor approved"
+          message:
+            "Vendor approved"
         });
 
       }
@@ -512,6 +784,7 @@ router.post(
 
 /* =========================================================
    REJECT VENDOR
+   POST /api/admin/vendors/reject/:id
 ========================================================= */
 
 router.post(
@@ -522,12 +795,16 @@ router.post(
     const id =
       Number(req.params.id);
 
+
     if (!Number.isInteger(id)) {
+
       return res.status(400).json({
         success: false,
         message: "Invalid vendor ID"
       });
+
     }
+
 
     db.query(
       `
@@ -537,41 +814,71 @@ router.post(
       AND role = 'vendor'
       AND status = 'pending'
       `,
+
       [id],
+
       (err, result) => {
 
         if (err) {
+
           return res.status(500).json({
             success: false,
-            message: "Vendor rejection failed"
+            message:
+              "Vendor rejection failed"
           });
+
         }
 
-        if (result.affectedRows === 0) {
+
+        if (
+          result.affectedRows === 0
+        ) {
+
           return res.status(404).json({
             success: false,
-            message: "Pending vendor not found"
+            message:
+              "Pending vendor not found"
           });
+
         }
 
 
         db.query(
           `
           INSERT INTO notifications
-          (user_id, message, type)
+          (
+            user_id,
+            message,
+            type
+          )
           VALUES (?, ?, ?)
           `,
+
           [
             id,
             "Your vendor application was rejected ❌",
             "vendor"
-          ]
+          ],
+
+          (notificationErr) => {
+
+            if (notificationErr) {
+
+              console.error(
+                "Notification error:",
+                notificationErr
+              );
+
+            }
+
+          }
         );
 
 
         res.json({
           success: true,
-          message: "Vendor rejected"
+          message:
+            "Vendor rejected"
         });
 
       }
@@ -580,5 +887,938 @@ router.post(
   }
 );
 
+
+/* =========================================================
+   SUPER ADMIN
+   GET PENDING ADMIN REQUESTS
+
+   GET /api/admin/admin-requests
+========================================================= */
+
+router.get(
+  "/admin-requests",
+  verifyAdmin,
+  requireSuperAdmin,
+  (req, res) => {
+
+    db.query(
+      `
+      SELECT
+        ar.id,
+        ar.requested_by,
+        ar.pi_username,
+        ar.pi_uid,
+        ar.admin_level,
+        ar.status,
+        ar.approved_by,
+        ar.created_at,
+        ar.approved_at,
+
+        u.name AS requester_name,
+        u.email AS requester_email
+
+      FROM admin_requests ar
+
+      LEFT JOIN users u
+        ON ar.requested_by = u.id
+
+      WHERE ar.status = 'pending'
+
+      ORDER BY ar.created_at DESC
+      `,
+
+      (err, requests) => {
+
+        if (err) {
+
+          console.error(
+            "Admin requests error:",
+            err
+          );
+
+          return res.status(500).json({
+            success: false,
+            message:
+              "Failed to load admin requests"
+          });
+
+        }
+
+
+        res.json({
+
+          success: true,
+
+          requests:
+            requests || []
+
+        });
+
+      }
+    );
+
+  }
+);
+
+
+/* =========================================================
+   SUPER ADMIN
+   APPROVE ADMIN REQUEST
+
+   POST /api/admin/admin-requests/:id/approve
+========================================================= */
+
+router.post(
+  "/admin-requests/:id/approve",
+  verifyAdmin,
+  requireSuperAdmin,
+  (req, res) => {
+
+    const requestId =
+      Number(req.params.id);
+
+
+    if (
+      !Number.isInteger(requestId)
+    ) {
+
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid request ID"
+      });
+
+    }
+
+
+    db.query(
+      `
+      SELECT *
+      FROM admin_requests
+      WHERE id = ?
+      AND status = 'pending'
+      LIMIT 1
+      `,
+
+      [requestId],
+
+      (err, requests) => {
+
+        if (err) {
+
+          console.error(err);
+
+          return res.status(500).json({
+            success: false,
+            message:
+              "Database error"
+          });
+
+        }
+
+
+        if (!requests.length) {
+
+          return res.status(404).json({
+            success: false,
+            message:
+              "Pending admin request not found"
+          });
+
+        }
+
+
+        const request =
+          requests[0];
+
+
+        /*
+          Only admin or moderator
+          can be created through
+          this request system.
+        */
+
+        const requestedLevel =
+          request.admin_level;
+
+
+        if (
+          requestedLevel !== "admin" &&
+          requestedLevel !== "moderator"
+        ) {
+
+          return res.status(400).json({
+            success: false,
+            message:
+              "Invalid administrator level"
+          });
+
+        }
+
+
+        db.query(
+          `
+          SELECT *
+          FROM users
+          WHERE id = ?
+          LIMIT 1
+          `,
+
+          [request.requested_by],
+
+          (userErr, users) => {
+
+            if (userErr) {
+
+              console.error(userErr);
+
+              return res.status(500).json({
+                success: false,
+                message:
+                  "Failed to load requesting user"
+              });
+
+            }
+
+
+            if (!users.length) {
+
+              return res.status(404).json({
+                success: false,
+                message:
+                  "Requesting user no longer exists"
+              });
+
+            }
+
+
+            const user =
+              users[0];
+
+
+            /*
+              Make sure the requester
+              has not already been
+              deleted or disabled.
+            */
+
+            if (
+              user.status === "rejected"
+            ) {
+
+              return res.status(400).json({
+                success: false,
+                message:
+                  "Requesting account is rejected"
+              });
+
+            }
+
+
+            db.query(
+              `
+              UPDATE users
+
+              SET
+                role = 'admin',
+                status = 'approved',
+                admin_level = ?
+
+              WHERE id = ?
+              `,
+
+              [
+                requestedLevel,
+                user.id
+              ],
+
+              (updateErr) => {
+
+                if (updateErr) {
+
+                  console.error(
+                    "Admin promotion error:",
+                    updateErr
+                  );
+
+                  return res.status(500).json({
+                    success: false,
+                    message:
+                      "Failed to approve administrator"
+                  });
+
+                }
+
+
+                db.query(
+                  `
+                  UPDATE admin_requests
+
+                  SET
+                    status = 'approved',
+                    approved_by = ?,
+                    approved_at = CURRENT_TIMESTAMP
+
+                  WHERE id = ?
+                  `,
+
+                  [
+                    req.user.id,
+                    requestId
+                  ],
+
+                  (requestErr) => {
+
+                    if (requestErr) {
+
+                      console.error(
+                        "Request update error:",
+                        requestErr
+                      );
+
+                      return res.status(500).json({
+                        success: false,
+                        message:
+                          "Administrator approved but request update failed"
+                      });
+
+                    }
+
+
+                    /*
+                      Notify requester.
+                    */
+
+                    db.query(
+                      `
+                      INSERT INTO notifications
+                      (
+                        user_id,
+                        message,
+                        type
+                      )
+                      VALUES (?, ?, ?)
+                      `,
+
+                      [
+                        user.id,
+                        `Your request to become an ${requestedLevel} has been approved by the Super Admin. 🎉`,
+                        "admin"
+                      ],
+
+                      (notificationErr) => {
+
+                        if (notificationErr) {
+
+                          console.error(
+                            "Notification error:",
+                            notificationErr
+                          );
+
+                        }
+
+                      }
+                    );
+
+
+                    return res.json({
+
+                      success: true,
+
+                      message:
+                        "Administrator request approved successfully"
+
+                    });
+
+                  }
+                );
+
+              }
+            );
+
+          }
+        );
+
+      }
+    );
+
+  }
+);
+
+
+/* =========================================================
+   SUPER ADMIN
+   REJECT ADMIN REQUEST
+
+   POST /api/admin/admin-requests/:id/reject
+========================================================= */
+
+router.post(
+  "/admin-requests/:id/reject",
+  verifyAdmin,
+  requireSuperAdmin,
+  (req, res) => {
+
+    const requestId =
+      Number(req.params.id);
+
+
+    if (
+      !Number.isInteger(requestId)
+    ) {
+
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid request ID"
+      });
+
+    }
+
+
+    db.query(
+      `
+      SELECT
+        id,
+        requested_by,
+        pi_username,
+        admin_level
+      FROM admin_requests
+      WHERE id = ?
+      AND status = 'pending'
+      LIMIT 1
+      `,
+
+      [requestId],
+
+      (err, requests) => {
+
+        if (err) {
+
+          return res.status(500).json({
+            success: false,
+            message:
+              "Database error"
+          });
+
+        }
+
+
+        if (!requests.length) {
+
+          return res.status(404).json({
+            success: false,
+            message:
+              "Pending admin request not found"
+          });
+
+        }
+
+
+        const request =
+          requests[0];
+
+
+        db.query(
+          `
+          UPDATE admin_requests
+
+          SET
+            status = 'rejected',
+            approved_by = ?,
+            approved_at = CURRENT_TIMESTAMP
+
+          WHERE id = ?
+          `,
+
+          [
+            req.user.id,
+            requestId
+          ],
+
+          (updateErr) => {
+
+            if (updateErr) {
+
+              console.error(updateErr);
+
+              return res.status(500).json({
+                success: false,
+                message:
+                  "Failed to reject admin request"
+              });
+
+            }
+
+
+            /*
+              Notify requester.
+            */
+
+            db.query(
+              `
+              INSERT INTO notifications
+              (
+                user_id,
+                message,
+                type
+              )
+              VALUES (?, ?, ?)
+              `,
+
+              [
+                request.requested_by,
+                `Your request to become an ${request.admin_level} has been rejected by the Super Admin.`,
+                "admin"
+              ],
+
+              (notificationErr) => {
+
+                if (notificationErr) {
+
+                  console.error(
+                    "Notification error:",
+                    notificationErr
+                  );
+
+                }
+
+              }
+            );
+
+
+            res.json({
+
+              success: true,
+
+              message:
+                "Administrator request rejected"
+
+            });
+
+          }
+        );
+
+      }
+    );
+
+  }
+);
+
+
+/* =========================================================
+   SUPER ADMIN
+   LIST ADMINISTRATORS
+
+   GET /api/admin/administrators
+========================================================= */
+
+router.get(
+  "/administrators",
+  verifyAdmin,
+  requireSuperAdmin,
+  (req, res) => {
+
+    db.query(
+      `
+      SELECT
+        id,
+        name,
+        email,
+        role,
+        status,
+        pi_uid,
+        pi_username,
+        admin_level,
+        created_at
+      FROM users
+      WHERE role = 'admin'
+      ORDER BY
+        admin_level DESC,
+        created_at ASC
+      `,
+
+      (err, admins) => {
+
+        if (err) {
+
+          console.error(err);
+
+          return res.status(500).json({
+            success: false,
+            message:
+              "Failed to load administrators"
+          });
+
+        }
+
+
+        res.json({
+
+          success: true,
+
+          administrators:
+            admins || []
+
+        });
+
+      }
+    );
+
+  }
+);
+
+
+/* =========================================================
+   SUPER ADMIN
+   CHANGE ADMIN LEVEL
+
+   POST /api/admin/administrators/:id/level
+========================================================= */
+
+router.post(
+  "/administrators/:id/level",
+  verifyAdmin,
+  requireSuperAdmin,
+  (req, res) => {
+
+    const adminId =
+      Number(req.params.id);
+
+    const {
+      admin_level
+    } = req.body || {};
+
+
+    if (
+      !Number.isInteger(adminId)
+    ) {
+
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid administrator ID"
+      });
+
+    }
+
+
+    if (
+      admin_level !== "admin" &&
+      admin_level !== "moderator"
+    ) {
+
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid administrator level"
+      });
+
+    }
+
+
+    /*
+      Super Admin cannot
+      downgrade themselves.
+    */
+
+    if (
+      adminId === req.user.id
+    ) {
+
+      return res.status(400).json({
+        success: false,
+        message:
+          "You cannot change your own administrator level"
+      });
+
+    }
+
+
+    db.query(
+      `
+      SELECT
+        id,
+        role,
+        admin_level,
+        status
+      FROM users
+      WHERE id = ?
+      AND role = 'admin'
+      LIMIT 1
+      `,
+
+      [adminId],
+
+      (err, admins) => {
+
+        if (err) {
+
+          return res.status(500).json({
+            success: false,
+            message:
+              "Database error"
+          });
+
+        }
+
+
+        if (!admins.length) {
+
+          return res.status(404).json({
+            success: false,
+            message:
+              "Administrator not found"
+          });
+
+        }
+
+
+        db.query(
+          `
+          UPDATE users
+
+          SET
+            admin_level = ?,
+            status = 'approved'
+
+          WHERE id = ?
+          AND role = 'admin'
+          `,
+
+          [
+            admin_level,
+            adminId
+          ],
+
+          (updateErr) => {
+
+            if (updateErr) {
+
+              console.error(updateErr);
+
+              return res.status(500).json({
+                success: false,
+                message:
+                  "Failed to update administrator"
+              });
+
+            }
+
+
+            res.json({
+
+              success: true,
+
+              message:
+                `Administrator changed to ${admin_level}`
+
+            });
+
+          }
+        );
+
+      }
+    );
+
+  }
+);
+
+
+/* =========================================================
+   SUPER ADMIN
+   REMOVE ADMINISTRATOR
+
+   POST /api/admin/administrators/:id/remove
+========================================================= */
+
+router.post(
+  "/administrators/:id/remove",
+  verifyAdmin,
+  requireSuperAdmin,
+  (req, res) => {
+
+    const adminId =
+      Number(req.params.id);
+
+
+    if (
+      !Number.isInteger(adminId)
+    ) {
+
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid administrator ID"
+      });
+
+    }
+
+
+    /*
+      Super Admin cannot
+      remove themselves.
+    */
+
+    if (
+      adminId === req.user.id
+    ) {
+
+      return res.status(400).json({
+        success: false,
+        message:
+          "You cannot remove yourself"
+      });
+
+    }
+
+
+    db.query(
+      `
+      SELECT
+        id,
+        name,
+        pi_username,
+        admin_level
+      FROM users
+      WHERE id = ?
+      AND role = 'admin'
+      LIMIT 1
+      `,
+
+      [adminId],
+
+      (err, admins) => {
+
+        if (err) {
+
+          return res.status(500).json({
+            success: false,
+            message:
+              "Database error"
+          });
+
+        }
+
+
+        if (!admins.length) {
+
+          return res.status(404).json({
+            success: false,
+            message:
+              "Administrator not found"
+          });
+
+        }
+
+
+        const admin =
+          admins[0];
+
+
+        /*
+          Do not allow another
+          super_admin to be removed
+          using this simple endpoint.
+        */
+
+        if (
+          admin.admin_level ===
+          "super_admin"
+        ) {
+
+          return res.status(403).json({
+            success: false,
+            message:
+              "Super Admin accounts require special handling"
+          });
+
+        }
+
+
+        db.query(
+          `
+          UPDATE users
+
+          SET
+            role = 'buyer',
+            status = 'approved',
+            admin_level = 'none'
+
+          WHERE id = ?
+          AND role = 'admin'
+          `,
+
+          [adminId],
+
+          (updateErr) => {
+
+            if (updateErr) {
+
+              console.error(updateErr);
+
+              return res.status(500).json({
+                success: false,
+                message:
+                  "Failed to remove administrator"
+              });
+
+            }
+
+
+            db.query(
+              `
+              INSERT INTO notifications
+              (
+                user_id,
+                message,
+                type
+              )
+              VALUES (?, ?, ?)
+              `,
+
+              [
+                adminId,
+                "Your administrator access has been removed by the Super Admin.",
+                "admin"
+              ],
+
+              (notificationErr) => {
+
+                if (notificationErr) {
+
+                  console.error(
+                    "Notification error:",
+                    notificationErr
+                  );
+
+                }
+
+              }
+            );
+
+
+            res.json({
+
+              success: true,
+
+              message:
+                "Administrator access removed"
+
+            });
+
+          }
+        );
+
+      }
+    );
+
+  }
+);
+
+
+/* =========================================================
+   EXPORT
+========================================================= */
 
 module.exports = router;
