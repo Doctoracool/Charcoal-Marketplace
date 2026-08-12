@@ -363,45 +363,23 @@ router.get(
 router.get(
   "/vendors/pending",
   verifyAdmin,
-  (req, res) => {
-
+  (req,res)=>{
     db.query(
-      `
-      SELECT
-        id,
-        name,
-        email,
-        role,
-        status,
-        created_at
-      FROM users
-      WHERE role = 'vendor'
-      AND status = 'pending'
-      ORDER BY created_at DESC
-      `,
-
-      (err, result) => {
-
-        if (err) {
-
+      `SELECT
+        id,name,email,role,status,pi_uid,pi_username,
+        vendor_status,business_name,business_phone,business_location,
+        business_description,vendor_applied_at
+       FROM users
+       WHERE vendor_status='pending'
+       ORDER BY vendor_applied_at DESC`,
+      (err,result)=>{
+        if(err){
           console.error(err);
-
-          return res.status(500).json({
-            success: false,
-            message:
-              "Failed to load pending vendors"
-          });
-
+          return res.status(500).json({success:false,message:"Failed to load pending vendors"});
         }
-
-
-        res.json(
-          result || []
-        );
-
+        res.json(result||[]);
       }
     );
-
   }
 );
 
@@ -681,105 +659,31 @@ router.post(
    POST /api/admin/vendors/approve/:id
 ========================================================= */
 
-router.post(
-  "/vendors/approve/:id",
-  verifyAdmin,
-  (req, res) => {
+router.post("/vendors/approve/:id",verifyAdmin,(req,res)=>{
+  const id=Number(req.params.id);
+  if(!Number.isInteger(id)) return res.status(400).json({success:false,message:"Invalid vendor ID"});
 
-    const id =
-      Number(req.params.id);
+  db.query(
+    `UPDATE users
+     SET role='vendor',status='approved',vendor_status='approved',
+         vendor_reviewed_at=CURRENT_TIMESTAMP,vendor_reviewed_by=?,
+         vendor_rejection_reason=NULL
+     WHERE id=? AND vendor_status='pending'`,
+    [req.user.id,id],
+    (err,result)=>{
+      if(err) return res.status(500).json({success:false,message:"Vendor approval failed"});
+      if(!result.affectedRows) return res.status(404).json({success:false,message:"Pending vendor not found"});
 
+      db.query(
+        `INSERT INTO notifications(user_id,message,type) VALUES (?,?,?)`,
+        [id,"Your vendor application has been approved 🎉","vendor"],
+        ()=>{}
+      );
 
-    if (!Number.isInteger(id)) {
-
-      return res.status(400).json({
-        success: false,
-        message: "Invalid vendor ID"
-      });
-
+      res.json({success:true,message:"Vendor approved"});
     }
-
-
-    db.query(
-      `
-      UPDATE users
-      SET status = 'approved'
-      WHERE id = ?
-      AND role = 'vendor'
-      AND status = 'pending'
-      `,
-
-      [id],
-
-      (err, result) => {
-
-        if (err) {
-
-          return res.status(500).json({
-            success: false,
-            message:
-              "Vendor approval failed"
-          });
-
-        }
-
-
-        if (
-          result.affectedRows === 0
-        ) {
-
-          return res.status(404).json({
-            success: false,
-            message:
-              "Pending vendor not found"
-          });
-
-        }
-
-
-        db.query(
-          `
-          INSERT INTO notifications
-          (
-            user_id,
-            message,
-            type
-          )
-          VALUES (?, ?, ?)
-          `,
-
-          [
-            id,
-            "Your vendor account has been approved 🎉",
-            "vendor"
-          ],
-
-          (notificationErr) => {
-
-            if (notificationErr) {
-
-              console.error(
-                "Notification error:",
-                notificationErr
-              );
-
-            }
-
-          }
-        );
-
-
-        res.json({
-          success: true,
-          message:
-            "Vendor approved"
-        });
-
-      }
-    );
-
-  }
-);
+  );
+});
 
 
 /* =========================================================
@@ -787,111 +691,39 @@ router.post(
    POST /api/admin/vendors/reject/:id
 ========================================================= */
 
-router.post(
-  "/vendors/reject/:id",
-  verifyAdmin,
-  (req, res) => {
+router.post("/vendors/reject/:id",verifyAdmin,(req,res)=>{
+  const id=Number(req.params.id);
+  if(!Number.isInteger(id)) return res.status(400).json({success:false,message:"Invalid vendor ID"});
 
-    const id =
-      Number(req.params.id);
+  const reason=String(req.body?.reason||"Vendor application rejected by Admin").trim().slice(0,500);
 
+  db.query(
+    `UPDATE users
+     SET vendor_status='rejected',
+         vendor_reviewed_at=CURRENT_TIMESTAMP,
+         vendor_reviewed_by=?,
+         vendor_rejection_reason=?
+     WHERE id=? AND vendor_status='pending'`,
+    [req.user.id,reason,id],
+    (err,result)=>{
+      if(err) return res.status(500).json({success:false,message:"Vendor rejection failed"});
+      if(!result.affectedRows) return res.status(404).json({success:false,message:"Pending vendor not found"});
 
-    if (!Number.isInteger(id)) {
+      db.query(
+        `INSERT INTO notifications(user_id,message,type) VALUES (?,?,?)`,
+        [id,`Your vendor application was rejected ❌ ${reason}`,"vendor"],
+        ()=>{}
+      );
 
-      return res.status(400).json({
-        success: false,
-        message: "Invalid vendor ID"
-      });
-
+      res.json({success:true,message:"Vendor rejected"});
     }
-
-
-    db.query(
-      `
-      UPDATE users
-      SET status = 'rejected'
-      WHERE id = ?
-      AND role = 'vendor'
-      AND status = 'pending'
-      `,
-
-      [id],
-
-      (err, result) => {
-
-        if (err) {
-
-          return res.status(500).json({
-            success: false,
-            message:
-              "Vendor rejection failed"
-          });
-
-        }
-
-
-        if (
-          result.affectedRows === 0
-        ) {
-
-          return res.status(404).json({
-            success: false,
-            message:
-              "Pending vendor not found"
-          });
-
-        }
-
-
-        db.query(
-          `
-          INSERT INTO notifications
-          (
-            user_id,
-            message,
-            type
-          )
-          VALUES (?, ?, ?)
-          `,
-
-          [
-            id,
-            "Your vendor application was rejected ❌",
-            "vendor"
-          ],
-
-          (notificationErr) => {
-
-            if (notificationErr) {
-
-              console.error(
-                "Notification error:",
-                notificationErr
-              );
-
-            }
-
-          }
-        );
-
-
-        res.json({
-          success: true,
-          message:
-            "Vendor rejected"
-        });
-
-      }
-    );
-
-  }
-);
+  );
+});
 
 
 /* =========================================================
    SUPER ADMIN
    GET PENDING ADMIN REQUESTS
-
    GET /api/admin/admin-requests
 ========================================================= */
 

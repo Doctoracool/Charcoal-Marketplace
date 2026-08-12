@@ -1,231 +1,202 @@
 const router = require("express").Router();
+const crypto = require("crypto");
 const db = require("../config/db");
 const { verifyToken } = require("../middleware/auth.middleware");
 
-/* =========================
-   CREATE ORDER (SAFE + FIXED)
-========================= */
-router.post("/", verifyToken, (req, res) => {
-  const { product_id, quantity = 1 } = req.body;
-  const buyer_id = req.user?.id;
+/*
+  Creates one checkout group containing one or more order rows.
+  Prices are ALWAYS read from MySQL; client-supplied prices are ignored.
+*/
+router.post("/checkout", verifyToken(), async (req,res)=>{
+  const items=Array.isArray(req.body?.items) ? req.body.items : [];
+  if(!items.length) return res.status(400).json({success:false,message:"Cart is empty"});
+  if(items.length>30) return res.status(400).json({success:false,message:"Too many items"});
 
-  if (!buyer_id) {
-    return res.status(401).json({
-      success: false,
-      message: "Unauthorized"
-    });
-  }
+  const normalized=items.map(i=>({
+    product_id:Number(i.product_id ?? i.id),
+    quantity:Number(i.quantity ?? i.qty ?? 1)
+  }));
 
-  if (!product_id) {
-    return res.status(400).json({
-      success: false,
-      message: "Product ID is required"
-    });
-  }
+  if(normalized.some(i=>!Number.isInteger(i.product_id)||!Number.isInteger(i.quantity)||i.quantity<1||i.quantity>100))
+    return res.status(400).json({success:false,message:"Invalid cart item"});
 
-  db.query(
-    "SELECT * FROM products WHERE id = ? AND status = 'approved'",
-    [product_id],
-    (err, products) => {
-      if (err) {
-        return res.status(500).json({
-          success: false,
-          message: "DB error"
-        });
-      }
+  const connection=await db.promise().getConnection();
+  const checkoutRef=`CHK-${Date.now()}-${crypto.randomBytes(5).toString("hex")}`;
 
-      if (!products || !products.length) {
-        return res.status(404).json({
-          success: false,
-          message: "Product not found"
-        });
-      }
+  try{
+    await connection.beginTransaction();
+    let total=0;
+    const created=[];
 
-      const product = products[0];
-
-      if (product.stock < quantity) {
-        return res.status(400).json({
-          success: false,
-          message: "Insufficient stock"
-        });
-      }
-
-      const total = product.price_pi * quantity;
-
-      db.query(
-        `INSERT INTO orders (buyer_id, product_id, quantity, status)
-         VALUES (?, ?, ?, 'pending')`,
-        [buyer_id, product_id, quantity],
-        (err2, result) => {
-          if (err2) {
-            return res.status(500).json({
-              success: false,
-              message: "Failed to create order"
-            });
-          }
-
-          return res.json({
-            success: true,
-            order_id: result.insertId,
-            total,
-            product
-          });
-        }
+    for(const item of normalized){
+      const [rows]=await connection.query(
+        `SELECT id,name,price_pi,stock,vendor_id
+         FROM products
+         WHERE id=? AND status='approved'
+         FOR UPDATE`,
+        [item.product_id]
       );
-    }
-  );
-});
 
-/* =========================
-   GET ALL ORDERS (ADMIN ONLY)
-========================= */
-router.get("/", verifyToken, (req, res) => {
-  if (req.user?.role !== "admin") {
-    return res.status(403).json({
-      success: false,
-      message: "Admin only access"
-    });
-  }
+      if(!rows.length) throw new Error(`Product ${item.product_id} is not available`);
+      const p=rows[0];
 
-  db.query(
-    `SELECT orders.*, products.name, products.price_pi
-     FROM orders
-     JOIN products ON orders.product_id = products.id
-     ORDER BY orders.id DESC`,
-    (err, result) => {
-      if (err) {
-        return res.status(500).json({
-          success: false,
-          message: "DB error"
-        });
-      }
+      if(Number(p.stock)<item.quantity)
+        throw new Error(`${p.name} does not have enough stock`);
 
-      res.json(result || []);
-    }
-  );
-});
+      const lineTotal=Number(p.price_pi)*item.quantity;
+      total+=lineTotal;
 
-/* =========================
-   GET USER ORDERS (SAFE)
-========================= */
-router.get("/my", verifyToken, (req, res) => {
-  const userId = req.user?.id;
-
-  db.query(
-    `SELECT orders.*, products.name, products.price_pi, products.image
-     FROM orders
-     JOIN products ON orders.product_id = products.id
-     WHERE orders.buyer_id = ?
-     ORDER BY orders.id DESC`,
-    [userId],
-    (err, result) => {
-      if (err) {
-        return res.status(500).json({
-          success: false,
-          message: "DB error"
-        });
-      }
-
-      res.json(result || []);
-    }
-  );
-});
-
-/* =========================
-   UPDATE ORDER STATUS (SAFE)
-========================= */
-router.put("/:id/status", verifyToken, (req, res) => {
-  const orderId = req.params.id;
-  const { status } = req.body;
-  const userId = req.user?.id;
-
-  const allowed = ["pending", "paid", "completed", "cancelled"];
-
-  if (!allowed.includes(status)) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid status"
-    });
-  }
-
-  db.query(
-    "SELECT * FROM orders WHERE id = ?",
-    [orderId],
-    (err, result) => {
-      if (err) {
-        return res.status(500).json({
-          success: false,
-          message: "DB error"
-        });
-      }
-
-      if (!result || !result.length) {
-        return res.status(404).json({
-          success: false,
-          message: "Order not found"
-        });
-      }
-
-      const order = result[0];
-
-      if (order.buyer_id !== userId && req.user.role !== "admin") {
-        return res.status(403).json({
-          success: false,
-          message: "Not allowed"
-        });
-      }
-
-      db.query(
-        "UPDATE orders SET status = ? WHERE id = ?",
-        [status, orderId],
-        (err2) => {
-          if (err2) {
-            return res.status(500).json({
-              success: false,
-              message: "DB error"
-            });
-          }
-
-          res.json({
-            success: true,
-            message: "Order updated successfully"
-          });
-        }
+      /* Reserve stock while the Pi payment is being completed. */
+      await connection.query(
+        `UPDATE products SET stock=stock-? WHERE id=? AND stock>=?`,
+        [item.quantity,p.id,item.quantity]
       );
+
+      const [result]=await connection.query(
+        `INSERT INTO orders
+         (buyer_id,product_id,quantity,total_pi,payment_id,status,checkout_ref,stock_reserved)
+         VALUES (?,?,?,?,NULL,'pending',?,1)`,
+        [req.user.id,p.id,item.quantity,lineTotal,checkoutRef]
+      );
+
+      created.push({order_id:result.insertId,product_id:p.id,name:p.name,quantity:item.quantity,line_total:lineTotal});
+    }
+
+    await connection.commit();
+
+    res.status(201).json({
+      success:true,
+      checkout_ref:checkoutRef,
+      total_pi:Number(total.toFixed(2)),
+      orders:created
+    });
+  }catch(error){
+    await connection.rollback();
+    res.status(400).json({success:false,message:error.message||"Unable to create checkout"});
+  }finally{
+    connection.release();
+  }
+});
+
+/* Legacy single-product order endpoint, now server-priced and stock-reserved. */
+router.post("/", verifyToken(), async (req,res)=>{
+  const product_id=Number(req.body?.product_id);
+  const quantity=Number(req.body?.quantity||1);
+  if(!Number.isInteger(product_id)||!Number.isInteger(quantity)||quantity<1)
+    return res.status(400).json({success:false,message:"Invalid product or quantity"});
+
+  req.body.items=[{product_id,quantity}];
+  /* Reuse checkout implementation by forwarding internally is unnecessarily complex;
+     keep the response contract compatible. */
+  const connection=await db.promise().getConnection();
+  const checkoutRef=`CHK-${Date.now()}-${crypto.randomBytes(5).toString("hex")}`;
+  try{
+    await connection.beginTransaction();
+    const [rows]=await connection.query(
+      `SELECT id,name,price_pi,stock FROM products WHERE id=? AND status='approved' FOR UPDATE`,
+      [product_id]
+    );
+    if(!rows.length) throw new Error("Product not found");
+    const p=rows[0];
+    if(Number(p.stock)<quantity) throw new Error("Insufficient stock");
+    const total=Number(p.price_pi)*quantity;
+    await connection.query(`UPDATE products SET stock=stock-? WHERE id=? AND stock>=?`,[quantity,p.id,quantity]);
+    const [r]=await connection.query(
+      `INSERT INTO orders (buyer_id,product_id,quantity,total_pi,payment_id,status,checkout_ref,stock_reserved)
+       VALUES (?,?,?, ?,NULL,'pending',?,1)`,
+      [req.user.id,p.id,quantity,total,checkoutRef]
+    );
+    await connection.commit();
+    res.status(201).json({success:true,order_id:r.insertId,checkout_ref,total:Number(total.toFixed(2)),product:p});
+  }catch(e){
+    await connection.rollback();
+    res.status(400).json({success:false,message:e.message||"Failed to create order"});
+  }finally{connection.release();}
+});
+
+/* Buyer orders */
+router.get("/my", verifyToken(), (req,res)=>{
+  db.query(
+    `SELECT o.*,p.name,p.price_pi,p.image,p.location
+     FROM orders o JOIN products p ON o.product_id=p.id
+     WHERE o.buyer_id=? ORDER BY o.id DESC`,
+    [req.user.id],
+    (err,rows)=>{
+      if(err) return res.status(500).json({success:false,message:"DB error"});
+      res.json(rows||[]);
     }
   );
 });
 
-/* =========================
-   DELETE ORDER (ADMIN ONLY)
-========================= */
-router.delete("/:id", verifyToken, (req, res) => {
-  if (req.user?.role !== "admin") {
-    return res.status(403).json({
-      success: false,
-      message: "Admin only"
-    });
-  }
+/* Vendor's orders */
+router.get("/vendor", verifyToken(), (req,res)=>{
+  if(req.user.role!=="vendor") return res.status(403).json({success:false,message:"Vendor access required"});
+  db.query(
+    `SELECT o.*,p.name,p.image,u.name AS buyer_name,u.pi_username
+     FROM orders o
+     JOIN products p ON o.product_id=p.id
+     JOIN users u ON o.buyer_id=u.id
+     WHERE p.vendor_id=?
+     ORDER BY o.id DESC`,
+    [req.user.id],
+    (err,rows)=>{
+      if(err) return res.status(500).json({success:false,message:"DB error"});
+      res.json(rows||[]);
+    }
+  );
+});
 
-  const orderId = req.params.id;
+/* Admin orders */
+router.get("/", verifyToken(), (req,res)=>{
+  if(req.user.role!=="admin") return res.status(403).json({success:false,message:"Admin only access"});
+  db.query(
+    `SELECT o.*,p.name,p.price_pi,u.name AS buyer_name,u.pi_username
+     FROM orders o
+     JOIN products p ON o.product_id=p.id
+     JOIN users u ON o.buyer_id=u.id
+     ORDER BY o.id DESC`,
+    (err,rows)=>{
+      if(err) return res.status(500).json({success:false,message:"DB error"});
+      res.json(rows||[]);
+    }
+  );
+});
+
+/* Status updates: admin can manage all; vendor can manage their own orders. */
+router.put("/:id/status", verifyToken(), (req,res)=>{
+  const orderId=Number(req.params.id);
+  const status=req.body?.status;
+  const allowed=["pending","paid","shipped","completed","cancelled"];
+  if(!Number.isInteger(orderId)||!allowed.includes(status))
+    return res.status(400).json({success:false,message:"Invalid order/status"});
 
   db.query(
-    "DELETE FROM orders WHERE id = ?",
+    `SELECT o.*,p.vendor_id FROM orders o JOIN products p ON o.product_id=p.id WHERE o.id=? LIMIT 1`,
     [orderId],
-    (err) => {
-      if (err) {
-        return res.status(500).json({
-          success: false,
-          message: "DB error"
-        });
-      }
+    (err,rows)=>{
+      if(err) return res.status(500).json({success:false,message:"DB error"});
+      if(!rows.length) return res.status(404).json({success:false,message:"Order not found"});
+      const o=rows[0];
 
-      res.json({
-        success: true,
-        message: "Order deleted"
+      const allowedUser =
+        req.user.role==="admin" ||
+        (req.user.role==="vendor" && o.vendor_id===req.user.id);
+      if(!allowedUser) return res.status(403).json({success:false,message:"Not allowed"});
+
+      db.query("UPDATE orders SET status=? WHERE id=?",[status,orderId],(e)=>{
+        if(e) return res.status(500).json({success:false,message:"DB error"});
+        res.json({success:true,message:"Order updated successfully"});
       });
     }
   );
 });
 
-module.exports = router;
+router.delete("/:id", verifyToken(), (req,res)=>{
+  if(req.user.role!=="admin") return res.status(403).json({success:false,message:"Admin only"});
+  db.query("DELETE FROM orders WHERE id=?",[Number(req.params.id)],err=>{
+    if(err) return res.status(500).json({success:false,message:"DB error"});
+    res.json({success:true});
+  });
+});
+
+module.exports=router;
