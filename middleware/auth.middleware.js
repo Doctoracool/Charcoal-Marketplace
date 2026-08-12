@@ -9,77 +9,34 @@ if (!SECRET) {
 
 
 /* =========================================================
-   VERIFY JWT + LOAD USER
+   VERIFY TOKEN
 ========================================================= */
 
 function verifyToken(allowedRoles = null) {
 
   return (req, res, next) => {
 
-    const requestId =
-      req.headers["x-request-id"] ||
-      `auth-${Date.now()}`;
-
     const header =
       req.headers.authorization || "";
 
 
-    console.log(
-      `[AUTH] ${requestId} ${req.method} ${req.originalUrl}`
-    );
-
-
-    /* -----------------------------------------------------
-       CHECK AUTH HEADER
-    ----------------------------------------------------- */
+    /* =====================================================
+       CHECK AUTHORIZATION HEADER
+    ===================================================== */
 
     if (!header.startsWith("Bearer ")) {
 
-      console.warn(
-        `[AUTH] ${requestId} Missing Bearer token`
-      );
-
       return res.status(401).json({
-
         success: false,
-
-        code: "AUTH_TOKEN_MISSING",
-
-        message:
-          "Authentication required"
-
+        message: "Authentication required"
       });
 
     }
 
 
-    const token =
-      header.slice(7).trim();
-
-
-    if (!token) {
-
-      console.warn(
-        `[AUTH] ${requestId} Empty token`
-      );
-
-      return res.status(401).json({
-
-        success: false,
-
-        code: "AUTH_TOKEN_EMPTY",
-
-        message:
-          "Authentication token is empty"
-
-      });
-
-    }
-
-
-    /* -----------------------------------------------------
+    /* =====================================================
        VERIFY JWT
-    ----------------------------------------------------- */
+    ===================================================== */
 
     let decoded;
 
@@ -87,67 +44,56 @@ function verifyToken(allowedRoles = null) {
 
       decoded =
         jwt.verify(
-          token,
+          header.slice(7).trim(),
           SECRET
         );
 
     } catch (error) {
 
       console.error(
-        `[AUTH] ${requestId} JWT verification failed:`,
-        error.message
+        "JWT verification error:",
+        error
       );
 
       return res.status(401).json({
-
         success: false,
-
-        code: "AUTH_TOKEN_INVALID",
-
         message:
-          error.name === "TokenExpiredError"
-            ? "Authentication token expired"
-            : "Invalid authentication token"
-
+          "Invalid or expired token"
       });
 
     }
 
 
-    if (
-      !decoded ||
-      !decoded.id
-    ) {
+    /* =====================================================
+       CHECK TOKEN ID
+    ===================================================== */
 
-      console.warn(
-        `[AUTH] ${requestId} JWT has no user ID`
+    if (!decoded?.id) {
+
+      console.error(
+        "JWT does not contain user ID:",
+        decoded
       );
 
       return res.status(401).json({
-
         success: false,
-
-        code: "AUTH_TOKEN_INVALID",
-
-        message:
-          "Invalid authentication token"
-
+        message: "Invalid token"
       });
 
     }
 
 
     console.log(
-      `[AUTH] ${requestId} JWT verified for user ID ${decoded.id}`
+      "🔐 Verifying user ID:",
+      decoded.id
     );
 
 
-    /* -----------------------------------------------------
-       LOAD CURRENT USER FROM DATABASE
-    ----------------------------------------------------- */
+    /* =====================================================
+       LOAD USER
+    ===================================================== */
 
-    db.query(
-      `
+    const sql = `
       SELECT
         id,
         name,
@@ -166,50 +112,65 @@ function verifyToken(allowedRoles = null) {
       FROM users
       WHERE id = ?
       LIMIT 1
-      `,
+    `;
 
+
+    db.query(
+      sql,
       [decoded.id],
 
       (err, rows) => {
 
+        /* =================================================
+           DATABASE ERROR
+        ================================================= */
+
         if (err) {
 
           console.error(
-            `[AUTH] ${requestId} Database error:`,
+            "❌ AUTH DATABASE QUERY ERROR:"
+          );
+
+          console.error(
+            "SQL:",
+            sql
+          );
+
+          console.error(
+            "User ID:",
+            decoded.id
+          );
+
+          console.error(
+            "MySQL error:",
             err
           );
 
+
           return res.status(500).json({
-
             success: false,
-
-            code:
-              "AUTH_DATABASE_ERROR",
-
             message:
               "Authentication service error"
-
           });
 
         }
 
 
+        /* =================================================
+           USER NOT FOUND
+        ================================================= */
+
         if (!rows.length) {
 
-          console.warn(
-            `[AUTH] ${requestId} User ${decoded.id} does not exist`
+          console.error(
+            "❌ User does not exist:",
+            decoded.id
           );
 
           return res.status(401).json({
-
             success: false,
-
-            code:
-              "AUTH_USER_NOT_FOUND",
-
             message:
               "Account no longer exists"
-
           });
 
         }
@@ -220,47 +181,40 @@ function verifyToken(allowedRoles = null) {
 
 
         console.log(
-          `[AUTH] ${requestId} User found:`,
+          "✅ User loaded:",
           {
             id: user.id,
+            email: user.email,
             role: user.role,
             status: user.status,
-            admin_level: user.admin_level,
-            vendor_status: user.vendor_status
+            admin_level:
+              user.admin_level,
+            vendor_status:
+              user.vendor_status
           }
         );
 
 
-        /* -------------------------------------------------
+        /* =================================================
            ACCOUNT STATUS
-        ------------------------------------------------- */
+        ================================================= */
 
         if (
           user.status !== "approved"
         ) {
 
-          console.warn(
-            `[AUTH] ${requestId} Account not approved`
-          );
-
           return res.status(403).json({
-
             success: false,
-
-            code:
-              "ACCOUNT_NOT_APPROVED",
-
             message:
               "Account is not approved"
-
           });
 
         }
 
 
-        /* -------------------------------------------------
+        /* =================================================
            ROLE CHECK
-        ------------------------------------------------- */
+        ================================================= */
 
         if (
           allowedRoles &&
@@ -269,31 +223,18 @@ function verifyToken(allowedRoles = null) {
           )
         ) {
 
-          console.warn(
-            `[AUTH] ${requestId} Role denied. Required:`,
-            allowedRoles,
-            "Actual:",
-            user.role
-          );
-
           return res.status(403).json({
-
             success: false,
-
-            code:
-              "ROLE_ACCESS_DENIED",
-
             message:
               "Access denied"
-
           });
 
         }
 
 
-        /* -------------------------------------------------
-           NORMALIZE ADMIN LEVEL
-        ------------------------------------------------- */
+        /* =================================================
+           ADMIN LEVEL
+        ================================================= */
 
         user.admin_level =
           user.role === "admin"
@@ -304,26 +245,12 @@ function verifyToken(allowedRoles = null) {
             : "none";
 
 
-        /* -------------------------------------------------
-           NORMALIZE VENDOR STATUS
-        ------------------------------------------------- */
-
-        user.vendor_status =
-          user.role === "vendor"
-            ? (
-                user.vendor_status ||
-                "pending"
-              )
-            : null;
-
+        /* =================================================
+           ATTACH USER
+        ================================================= */
 
         req.user =
           user;
-
-
-        console.log(
-          `[AUTH] ${requestId} Authentication successful`
-        );
 
 
         next();
@@ -337,7 +264,7 @@ function verifyToken(allowedRoles = null) {
 
 
 /* =========================================================
-   ADMIN
+   VERIFY ADMIN
 ========================================================= */
 
 function verifyAdmin(
@@ -358,7 +285,7 @@ function verifyAdmin(
 
 
 /* =========================================================
-   SUPER ADMIN
+   VERIFY SUPER ADMIN
 ========================================================= */
 
 function verifySuperAdmin(
@@ -379,20 +306,10 @@ function verifySuperAdmin(
         "super_admin"
       ) {
 
-        console.warn(
-          `[AUTH] Super Admin access denied for user ${req.user.id}`
-        );
-
         return res.status(403).json({
-
           success: false,
-
-          code:
-            "SUPER_ADMIN_REQUIRED",
-
           message:
             "Super Admin access required"
-
         });
 
       }
@@ -407,7 +324,7 @@ function verifySuperAdmin(
 
 
 /* =========================================================
-   VENDOR
+   VERIFY VENDOR
 ========================================================= */
 
 function verifyVendor(
@@ -428,20 +345,10 @@ function verifyVendor(
         "approved"
       ) {
 
-        console.warn(
-          `[AUTH] Vendor access denied for user ${req.user.id}`
-        );
-
         return res.status(403).json({
-
           success: false,
-
-          code:
-            "VENDOR_NOT_APPROVED",
-
           message:
             "Vendor account is not approved"
-
         });
 
       }
@@ -455,14 +362,13 @@ function verifyVendor(
 }
 
 
+/* =========================================================
+   EXPORT
+========================================================= */
+
 module.exports = {
-
   verifyToken,
-
   verifyAdmin,
-
   verifySuperAdmin,
-
   verifyVendor
-
 };
