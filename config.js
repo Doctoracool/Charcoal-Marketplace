@@ -1,6 +1,6 @@
-/* =========================
-   API CONFIG (PRODUCTION FIX)
-========================= */
+/* ==============
+   API CONFIG 
+================ */
 const API_BASE = "https://charcoal-marketplace-2.onrender.com/api";
 
 /* =========================

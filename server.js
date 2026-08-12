@@ -1,147 +1,80 @@
-console.log("🚀 SERVER STARTING...");
-
-const express = require("express");
-const cors = require("cors");
-const path = require("path");
 require("dotenv").config();
 
-/* =========================
-   APP INIT
-========================= */
-const app = express();
-const PORT = process.env.PORT || 34446;
+const express=require("express");
+const cors=require("cors");
+const helmet=require("helmet");
+const compression=require("compression");
+const morgan=require("morgan");
+const rateLimit=require("express-rate-limit");
+const path=require("path");
 
-/* =========================
-   TRUST PROXY (RENDER FIX)
-========================= */
-app.set("trust proxy", 1);
+const app=express();
+const PORT=Number(process.env.PORT||5000);
 
-/* =========================
-   CORS CONFIG (PI + WEB SAFE)
-========================= */
+app.set("trust proxy",1);
+
+const configuredOrigins=(process.env.FRONTEND_ORIGINS||"")
+  .split(",").map(s=>s.trim()).filter(Boolean);
+
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-
-    const allowedOrigins = [
-      "http://localhost:3000",
-      "http://localhost:5000"
-    ];
-
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-
-    return callback(null, true);
+  origin:(origin,callback)=>{
+    if(!origin) return callback(null,true);
+    if(!configuredOrigins.length) return callback(null,true);
+    if(configuredOrigins.includes(origin)) return callback(null,true);
+    return callback(new Error("CORS origin not allowed"));
   },
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  allowedHeaders: ["Content-Type", "Authorization"]
+  methods:["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
+  allowedHeaders:["Content-Type","Authorization"],
+  credentials:false
 }));
 
-/* =========================
-   BODY PARSER
-========================= */
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(helmet({crossOriginResourcePolicy:{policy:"cross-origin"}}));
+app.use(compression());
+app.use(morgan(process.env.NODE_ENV==="production"?"combined":"dev"));
+app.use(express.json({limit:"2mb"}));
+app.use(express.urlencoded({extended:true,limit:"2mb"}));
 
-/* =========================
-   HEALTH CHECK
-========================= */
-app.get("/", (req, res) => {
-  res.json({
-    status: "OK",
-    message: "Charcoal Marketplace API running 🚀"
-  });
+const authLimiter=rateLimit({
+  windowMs:15*60*1000,
+  max:100,
+  standardHeaders:true,
+  legacyHeaders:false
+});
+app.use("/api/auth",authLimiter);
+
+app.get("/",(req,res)=>res.json({
+  success:true,
+  status:"OK",
+  service:"Charcoal Marketplace API",
+  environment:process.env.NODE_ENV||"development"
+}));
+
+app.get("/health",(req,res)=>res.json({success:true,status:"healthy"}));
+
+app.use("/api/auth",require("./routes/auth.routes"));
+app.use("/api/products",require("./routes/product.routes"));
+app.use("/api/orders",require("./routes/orders.routes"));
+app.use("/api/payments",require("./routes/payment.routes"));
+app.use("/api/admin",require("./routes/admin.routes"));
+app.use("/api/admin-request",require("./routes/adminRequest.routes"));
+app.use("/api/notifications",require("./routes/notifications.routes"));
+
+app.use("/uploads",express.static(path.join(__dirname,"uploads"),{
+  maxAge:"7d",
+  index:false
+}));
+
+app.use((req,res)=>res.status(404).json({success:false,message:"Route not found"}));
+
+app.use((err,req,res,next)=>{
+  console.error("SERVER ERROR:",err);
+  if(err.message==="CORS origin not allowed")
+    return res.status(403).json({success:false,message:"Origin not allowed"});
+  res.status(500).json({success:false,message:"Internal server error"});
 });
 
-/* =========================
-   ROUTES 
-========================= */
-
-try {
-  const authRoutes = require("./routes/auth.routes.js");
-  app.use("/api/auth", authRoutes);
-  console.log("✅ Auth routes loaded");
-} catch (err) {
-  console.error("❌ Auth routes failed:", err.message);
-}
-
-try {
-  const productRoutes = require("./routes/product.routes.js");
-  app.use("/api/products", productRoutes);
-  console.log("✅ Product routes loaded");
-} catch (err) {
-  console.error("❌ Product routes failed:", err.message);
-}
-
-try {
-  const orderRoutes = require("./routes/orders.routes.js");
-  app.use("/api/orders", orderRoutes);
-  console.log("✅ Order routes loaded");
-} catch (err) {
-  console.error("❌ Order routes failed:", err.message);
-}
-
-try {
-  const paymentRoutes = require("./routes/payment.routes.js");
-  app.use("/api/payments", paymentRoutes);
-  console.log("✅ Payment routes loaded");
-} catch (err) {
-  console.error("❌ Payment routes failed:", err.message);
-}
-
-try {
-  const adminRoutes = require("./routes/admin.routes.js");
-  app.use("/api/admin", adminRoutes);
-  console.log("✅ Admin routes loaded");
-} catch (err) {
-  console.error("❌ Admin routes failed:", err.message);
-}
-
-app.use(
-  "/api/admin-request",
-  require("./routes/adminRequest.routes")
-);
-
-try {
-  const notificationRoutes = require("./routes/notifications.routes.js");
-  app.use("/api/notifications", notificationRoutes);
-  console.log("✅ Notification routes loaded");
-} catch (err) {
-  console.error("❌ Notification routes failed:", err.message);
-}
-
-/* =========================
-   STATIC FILES
-========================= */
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
-/* =========================
-   404 HANDLER
-========================= */
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: "Route not found"
-  });
-});
-
-/* =========================
-   GLOBAL ERROR HANDLER
-========================= */
-app.use((err, req, res, next) => {
-  console.error("🔥 SERVER ERROR:", err);
-
-  res.status(500).json({
-    success: false,
-    message: "Internal server error"
-  });
-});
-
-/* =========================
-   START SERVER
-========================= */
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📡 API READY: https://charcoal-marketplace-2.onrender.com`);
+app.listen(PORT,()=>{
+  console.log(`Charcoal Marketplace API running on port ${PORT}`);
+  if(!configuredOrigins.length)
+    console.warn("WARNING: FRONTEND_ORIGINS is not configured; CORS is open.");
 });
